@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Afinador do Mestre Lion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0f2116;
+    --panel: #17301f;
+    --panel-2: #1f3d28;
+    --line: #2f5636;
+    --brass: #f2c230;   /* amarelo reggae */
+    --brass-dim: #b8901f;
+    --cream: #f7f2df;
+    --muted: #8fb094;
+    --tight: #e0392b;   /* vermelho reggae — agudo demais / afrouxar */
+    --loose: #f2c230;   /* amarelo reggae — grave demais / apertar */
+    --ok: #3fae55;      /* verde reggae — no ponto */
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0;
+    background: var(--bg);
+    color: var(--cream);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    min-height: 100vh;
+    padding: 28px 16px 60px;
+    display:flex;
+    justify-content:center;
+  }
+
+  .app{
+    width:100%;
+    max-width: 620px;
+  }
+
+  header{
+    text-align:center;
+    margin-bottom: 22px;
+  }
+
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 8px;
+  }
+
+  h1{
+    font-family:'Oswald', sans-serif;
+    font-weight:700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: clamp(28px, 7vw, 40px);
+    margin: 0 0 10px;
+    color: var(--cream);
+  }
+
+  .lede{
+    font-size: 14px;
+    line-height:1.55;
+    color: var(--muted);
+    max-width: 440px;
+    margin: 0 auto;
+  }
+
+  .lugcount{
+    display:flex;
+    justify-content:center;
+    gap:8px;
+    margin: 22px 0 6px;
+  }
+
+  .lugcount button{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    padding: 7px 14px;
+    border-radius: 999px;
+    cursor:pointer;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .lugcount button:hover{ border-color: var(--brass-dim); color: var(--cream); }
+  .lugcount button.active{
+    background: var(--brass);
+    color: #1a1410;
+    border-color: var(--brass);
+    font-weight: 600;
+  }
+
+  .mic-row{
+    display:flex;
+    justify-content:center;
+    margin: 18px 0 4px;
+  }
+
+  #micBtn{
+    font-family:'Inter', sans-serif;
+    font-weight:600;
+    font-size: 14px;
+    background: transparent;
+    color: var(--brass);
+    border: 1px solid var(--brass-dim);
+    padding: 10px 20px;
+    border-radius: 10px;
+    cursor:pointer;
+    transition: background .15s, color .15s;
+  }
+  #micBtn:hover{ background: var(--brass); color:#1a1410; }
+  #micBtn.on{
+    color: var(--ok);
+    border-color: var(--ok);
+  }
+
+  .stage{
+    position:relative;
+    margin: 22px auto 8px;
+    max-width: 460px;
+  }
+
+  svg{ width:100%; height:auto; display:block; }
+
+  .lug{ cursor:pointer; }
+  .lug .bolt{ transition: stroke .15s, fill .15s; }
+  .lug.selected .bolt{ stroke: var(--cream); }
+  .lug .num{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 15px;
+    fill: var(--cream);
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events:none;
+  }
+  .lug .gauge-bg{ stroke: var(--line); }
+  .lug .gauge-fg{ transition: stroke-dashoffset .3s ease, stroke .3s ease; }
+
+  .status{
+    text-align:center;
+    min-height: 44px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    margin: 6px 0 14px;
+  }
+
+  .status .msg{
+    font-size: 14px;
+    color: var(--cream);
+  }
+  .status .sub{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .reading{
+    font-family:'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 32px;
+    line-height:1.25;
+    color: var(--brass);
+    opacity: 0;
+    overflow: visible;
+    white-space: normal;
+    transition: opacity .2s ease;
+  }
+  .reading.show{ opacity:1; margin-bottom: 6px; }
+
+  .stage-toggle{
+    display:flex;
+    justify-content:center;
+    margin: 10px 0 0;
+  }
+  .stage-toggle button{
+    font-family:'Inter', sans-serif;
+    font-weight:500;
+    font-size: 12.5px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 7px 14px;
+    border-radius: 999px;
+    cursor:pointer;
+  }
+  .stage-toggle button.active{
+    background: var(--brass);
+    color:#1a1410;
+    border-color: var(--brass);
+    font-weight:600;
+  }
+
+  body.stage-mode .eyebrow,
+  body.stage-mode .lede,
+  body.stage-mode footer{
+    display:none;
+  }
+  body.stage-mode h1{
+    font-size: clamp(24px, 8vw, 34px);
+    margin-bottom: 4px;
+  }
+  body.stage-mode header{ margin-bottom: 10px; }
+  body.stage-mode .reading{ font-size: 42px; }
+  body.stage-mode .status .msg{ font-size: 16px; }
+  body.stage-mode .primary-btn{ font-size: 18px; padding: 18px 26px; }
+  body.stage-mode .stage{ margin: 14px auto 4px; }
+
+  .dot{
+    width:8px; height:8px; border-radius:50%;
+    background: var(--muted);
+    display:inline-block;
+    margin-right:6px;
+  }
+  .dot.listening{
+    background: var(--tight);
+    animation: pulse 0.9s infinite ease-in-out;
+  }
+  @keyframes pulse{
+    0%,100%{ opacity:1; transform: scale(1); }
+    50%{ opacity:.45; transform: scale(1.4); }
+  }
+
+  .actions{
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    margin-bottom: 28px;
+  }
+
+  .primary-btn{
+    font-family:'Inter', sans-serif;
+    font-weight:700;
+    font-size: 16px;
+    background: var(--tight);
+    color: var(--cream);
+    border: none;
+    padding: 15px 26px;
+    border-radius: 12px;
+    cursor:pointer;
+    transition: filter .15s, opacity .15s;
+    flex: 1;
+    max-width: 260px;
+  }
+  .primary-btn:hover{ filter: brightness(1.1); }
+  .primary-btn:disabled{ opacity:.35; cursor:not-allowed; }
+
+  .ghost-btn{
+    font-family:'Inter', sans-serif;
+    font-weight:500;
+    font-size: 13px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 12px 18px;
+    border-radius: 10px;
+    cursor:pointer;
+  }
+  .ghost-btn:hover{ color: var(--cream); border-color: var(--brass-dim); }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 18px 16px;
+  }
+
+  .panel h2{
+    font-family:'Oswald', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 14px;
+    color: var(--brass);
+    margin: 0 0 14px;
+  }
+
+  .rows{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+  }
+  @media (max-width: 420px){
+    .rows{ grid-template-columns: 1fr; }
+  }
+
+  .row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 12.5px;
+  }
+  .row .lbl{ color: var(--muted); }
+  .row .val{ color: var(--cream); display:flex; align-items:center; gap:6px; }
+  .row .arrow{ font-size: 13px; }
+  .row.empty .val{ color: var(--line); }
+
+  .summary{
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line);
+    font-size: 13px;
+    color: var(--muted);
+    text-align:center;
+    line-height:1.6;
+  }
+  .summary.success{ color: var(--ok); }
+  .summary b{ color: var(--cream); font-weight:600; }
+
+  footer{
+    text-align:center;
+    margin-top: 22px;
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header>
+    <p class="eyebrow">Tensão por ouvido, não por nota</p>
+    <h1>Afinador do Mestre Lion</h1>
+    <p class="lede">Bata no primeiro parafuso: ele vira a referência. O app guia os próximos em cruz — sempre pulando pro lado oposto — pra não empenar o aro, mostrando "apertar" ou "afrouxar" a cada tentativa até "no ponto".</p>
+  </header>
+
+  <div class="lugcount" id="lugcount">
+    <button data-n="6">6 parafusos</button>
+    <button data-n="8" class="active">8 parafusos</button>
+    <button data-n="10">10 parafusos</button>
+  </div>
+
+  <div class="mic-row">
+    <button id="micBtn">Ativar microfone</button>
+  </div>
+
+  <div class="stage-toggle">
+    <button id="stageBtn">Modo palco: telão simples, direto ao ponto</button>
+  </div>
+
+  <div class="stage">
+    <svg id="drumSvg" viewBox="0 0 500 500"></svg>
+  </div>
+
+  <div class="status">
+    <div class="reading" id="reading"></div>
+    <div class="msg" id="statusMsg"><span class="dot" id="statusDot"></span>Ative o microfone para começar</div>
+    <div class="sub" id="statusSub">toque em um parafuso no desenho para selecioná-lo</div>
+  </div>
+
+  <div class="actions">
+    <button class="primary-btn" id="captureBtn" disabled>Bater e capturar</button>
+    <button class="ghost-btn" id="resetBtn">Reiniciar</button>
+  </div>
+
+  <div class="panel">
+    <h2>Leitura por parafuso</h2>
+    <div class="rows" id="rows"></div>
+    <div class="summary" id="summary">Nenhum parafuso medido ainda.</div>
+  </div>
+
+  <footer>
+    Feito para uso ao vivo, perto do tambor, em ambiente sem muito ruído de fundo.<br>
+    O microfone é usado só neste navegador — nada é gravado ou enviado.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById('drumSvg');
+  const lugcountEl = document.getElementById('lugcount');
+  const micBtn = document.getElementById('micBtn');
+  const captureBtn = document.getElementById('captureBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const statusMsg = document.getElementById('statusMsg');
+  const statusSub = document.getElementById('statusSub');
+  const statusDot = document.getElementById('statusDot');
+  const rowsEl = document.getElementById('rows');
+  const summaryEl = document.getElementById('summary');
+  const readingEl = document.getElementById('reading');
+  const stageBtn = document.getElementById('stageBtn');
+
+  const CX = 250, CY = 250;
+  const LUG_R = 196;      // raio onde ficam os parafusos
+  const BOLT_R = 15;      // raio do círculo do parafuso
+  const GAUGE_R = 24;     // raio do anel indicador
+  const GAUGE_W = 5;
+  const GAUGE_MAX_DEV = 0.08; // 8% de desvio = anel cheio
+
+  let lugCount = 8;
+  let measurements = [];
+  let selectedLug = null;
+  let referenceHz = null;
+
+  let audioCtx = null;
+  let analyser = null;
+  let micStream = null;
+  let listening = false;
+
+  function setStatus(msg, sub, dotOn){
+    statusMsg.innerHTML = '<span class="dot ' + (dotOn ? 'listening' : '') + '" id="statusDot"></span>' + msg;
+    statusSub.textContent = sub || '';
+  }
+
+  // ---------- Desenho do tambor ----------
+
+  function buildDrum(){
+    svg.innerHTML = '';
+
+    // aro externo (casco)
+    const shell = document.createElementNS(NS,'circle');
+    shell.setAttribute('cx', CX); shell.setAttribute('cy', CY);
+    shell.setAttribute('r', 222);
+    shell.setAttribute('fill', 'none');
+    shell.setAttribute('stroke', '#2f5636');
+    shell.setAttribute('stroke-width', 3);
+    svg.appendChild(shell);
+
+    // pele do tambor
+    const head = document.createElementNS(NS,'circle');
+    head.setAttribute('cx', CX); head.setAttribute('cy', CY);
+    head.setAttribute('r', 170);
+    head.setAttribute('fill', '#17301f');
+    head.setAttribute('stroke', '#f2c230');
+    head.setAttribute('stroke-width', 2);
+    head.setAttribute('opacity', '0.9');
+    svg.appendChild(head);
+
+    // textura em anéis sutis
+    [130, 90, 50].forEach(r=>{
+      const ring = document.createElementNS(NS,'circle');
+      ring.setAttribute('cx', CX); ring.setAttribute('cy', CY);
+      ring.setAttribute('r', r);
+      ring.setAttribute('fill', 'none');
+      ring.setAttribute('stroke', '#2f5636');
+      ring.setAttribute('stroke-width', 1);
+      svg.appendChild(ring);
+    });
+
+    // aro de contra-aro (hoop) entre pele e parafusos
+    const hoop = document.createElementNS(NS,'circle');
+    hoop.setAttribute('cx', CX); hoop.setAttribute('cy', CY);
+    hoop.setAttribute('r', 182);
+    hoop.setAttribute('fill', 'none');
+    hoop.setAttribute('stroke', '#1f3d28');
+    hoop.setAttribute('stroke-width', 14);
+    svg.appendChild(hoop);
+
+    for (let i=0;i<lugCount;i++){
+      const angle = -Math.PI/2 + i*(2*Math.PI/lugCount);
+      const x = CX + LUG_R*Math.cos(angle);
+      const y = CY + LUG_R*Math.sin(angle);
+
+      const g = document.createElementNS(NS,'g');
+      g.setAttribute('class','lug');
+      g.setAttribute('data-i', i);
+
+      const gaugeBg = document.createElementNS(NS,'circle');
+      gaugeBg.setAttribute('class','gauge-bg');
+      gaugeBg.setAttribute('cx', x); gaugeBg.setAttribute('cy', y);
+      gaugeBg.setAttribute('r', GAUGE_R);
+      gaugeBg.setAttribute('fill','none');
+      gaugeBg.setAttribute('stroke-width', GAUGE_W);
+      g.appendChild(gaugeBg);
+
+      const circumference = 2*Math.PI*GAUGE_R;
+      const gaugeFg = document.createElementNS(NS,'circle');
+      gaugeFg.setAttribute('class','gauge-fg');
+      gaugeFg.setAttribute('cx', x); gaugeFg.setAttribute('cy', y);
+      gaugeFg.setAttribute('r', GAUGE_R);
+      gaugeFg.setAttribute('fill','none');
+      gaugeFg.setAttribute('stroke-width', GAUGE_W);
+      gaugeFg.setAttribute('stroke-linecap','round');
+      gaugeFg.setAttribute('transform', 'rotate(-90 ' + x + ' ' + y + ')');
+      gaugeFg.setAttribute('stroke-dasharray', circumference);
+      gaugeFg.setAttribute('stroke-dashoffset', circumference);
+      gaugeFg.setAttribute('stroke', '#2f5636');
+      g.appendChild(gaugeFg);
+
+      const bolt = document.createElementNS(NS,'circle');
+      bolt.setAttribute('class','bolt');
+      bolt.setAttribute('cx', x); bolt.setAttribute('cy', y);
+      bolt.setAttribute('r', BOLT_R);
+      bolt.setAttribute('fill', '#17301f');
+      bolt.setAttribute('stroke', '#b8901f');
+      bolt.setAttribute('stroke-width', 2);
+      g.appendChild(bolt);
+
+      const num = document.createElementNS(NS,'text');
+      num.setAttribute('class','num');
+      num.setAttribute('x', x); num.setAttribute('y', y+1);
+      num.textContent = (i+1);
+      g.appendChild(num);
+
+      g.addEventListener('click', ()=> selectLug(i));
+      svg.appendChild(g);
+    }
+
+    refreshGauges();
+  }
+
+  function refreshGauges(){
+    const circumference = 2*Math.PI*GAUGE_R;
+
+    svg.querySelectorAll('.lug').forEach(g=>{
+      const i = +g.getAttribute('data-i');
+      g.classList.toggle('selected', i===selectedLug);
+      const fg = g.querySelector('.gauge-fg');
+      const bolt = g.querySelector('.bolt');
+      const val = measurements[i];
+
+      if (val==null || referenceHz==null){
+        fg.setAttribute('stroke-dashoffset', circumference);
+        fg.setAttribute('stroke', '#2f5636');
+        bolt.setAttribute('fill', '#17301f');
+        return;
+      }
+
+      const dev = (val - referenceHz) / referenceHz; // positivo = mais agudo que a referência
+      const mag = Math.min(Math.abs(dev)/GAUGE_MAX_DEV, 1);
+      let color;
+      if (Math.abs(dev) < 0.012){ color = '#3fae55'; }
+      else if (dev > 0){ color = '#e0392b'; } // agudo demais -> afrouxar
+      else { color = '#f2c230'; }             // grave demais -> apertar
+
+      fg.setAttribute('stroke', color);
+      fg.setAttribute('stroke-dashoffset', circumference * (1-mag));
+      bolt.setAttribute('fill', color);
+      bolt.style.opacity = 0.28;
+    });
+  }
+
+  function selectLug(i){
+    selectedLug = i;
+    captureBtn.disabled = !(audioCtx && micStream);
+    refreshGauges();
+    setStatus('Parafuso ' + (i+1) + ' selecionado', 'toque "Bater e capturar" e bata perto dele', false);
+  }
+
+  // Sugere o próximo parafuso a bater seguindo o padrão em cruz (estrela) —
+  // sempre pulando para o lado mais distante do que já foi medido, em vez de
+  // seguir em sequência, para não empenar o aro.
+  function nextSuggestedLug(){
+    const unmeasured = [];
+    const measuredIdx = [];
+    for (let i=0;i<lugCount;i++){
+      if (measurements[i]==null) unmeasured.push(i); else measuredIdx.push(i);
+    }
+    if (unmeasured.length === 0) return -1;
+    if (measuredIdx.length === 0) return unmeasured[0];
+
+    let best = unmeasured[0], bestDist = -1;
+    for (const cand of unmeasured){
+      let minDist = Infinity;
+      for (const m of measuredIdx){
+        const raw = Math.abs(cand - m);
+        const d = Math.min(raw, lugCount - raw);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist > bestDist){ bestDist = minDist; best = cand; }
+    }
+    return best;
+  }
+
+  // ---------- Contador de parafusos ----------
+
+  lugcountEl.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    lugcountEl.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    lugCount = +btn.getAttribute('data-n');
+    measurements = new Array(lugCount).fill(null);
+    selectedLug = null;
+    referenceHz = null;
+    captureBtn.disabled = true;
+    buildDrum();
+    renderRows();
+  });
+
+  // ---------- Modo palco ----------
+
+  stageBtn.addEventListener('click', ()=>{
+    const on = document.body.classList.toggle('stage-mode');
+    stageBtn.classList.toggle('active', on);
+    stageBtn.textContent = on ? 'Sair do modo palco' : 'Modo palco: telão simples, direto ao ponto';
+  });
+
+  function setReading(text, color){
+    readingEl.textContent = text;
+    readingEl.style.color = color || 'var(--brass)';
+    readingEl.classList.toggle('show', !!text);
+  }
+
+  // ---------- Microfone ----------
+
+  micBtn.addEventListener('click', async ()=>{
+    if (audioCtx) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus('Navegador sem suporte a microfone', 'tente abrir esta página no Chrome ou Safari atualizados', false);
+      return;
+    }
+    try{
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended'){
+        try { await audioCtx.resume(); } catch(e){ /* alguns navegadores só liberam no próximo toque do usuário */ }
+      }
+      const source = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+
+      micBtn.textContent = 'Microfone ativo';
+      micBtn.classList.add('on');
+      captureBtn.disabled = selectedLug==null;
+      setStatus('Microfone pronto', 'toque em um parafuso no desenho para selecioná-lo', false);
+    } catch(err){
+      audioCtx = null;
+      analyser = null;
+      if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
+      setStatus('Não consegui acessar o microfone', 'verifique a permissão do navegador e tente de novo', false);
+    }
+  });
+
+  // ---------- Captura e detecção de tom ----------
+
+  captureBtn.addEventListener('click', async ()=>{
+    if (selectedLug==null || !analyser || !audioCtx || listening) return;
+    listening = true;
+    captureBtn.disabled = true;
+    setStatus('Ouvindo...', 'bata perto do parafuso ' + (selectedLug+1) + ' agora', true);
+
+    if (audioCtx.state === 'suspended'){
+      try { await audioCtx.resume(); } catch(e){ /* segue mesmo assim, tenta capturar */ }
+    }
+
+    const bufLen = analyser.fftSize;
+    const sample = new Float32Array(bufLen);
+    let best = null;
+    let bestRms = 0;
+    const start = performance.now();
+    const DURATION = 1100;
+    const capturedLug = selectedLug;
+
+    function frame(){
+      try{
+        analyser.getFloatTimeDomainData(sample);
+        let sum = 0;
+        for (let i=0;i<bufLen;i++){ sum += sample[i]*sample[i]; }
+        const rms = Math.sqrt(sum/bufLen);
+        if (rms > bestRms){
+          bestRms = rms;
+          best = sample.slice();
+        }
+        if (performance.now() - start < DURATION){
+          requestAnimationFrame(frame);
+        } else {
+          finish();
+        }
+      } catch(err){
+        finish();
+      }
+    }
+
+    function finish(){
+      listening = false;
+      captureBtn.disabled = false;
+      try{
+        if (bestRms < 0.02 || !best){
+          setStatus('Não captei nenhuma batida', 'bata um pouco mais forte, perto do parafuso ' + (capturedLug+1), false);
+          return;
+        }
+        const freq = autoCorrelate(best, audioCtx.sampleRate);
+        if (!Number.isFinite(freq) || freq < 40 || freq > 2000){
+          setStatus('Som pouco claro, tente de novo', 'evite ruído de fundo ao bater', false);
+          return;
+        }
+      measurements[capturedLug] = freq;
+
+      if (referenceHz == null){
+        referenceHz = freq;
+        renderRows();
+        refreshGauges();
+        setReading(Math.round(freq) + ' Hz  \u2605 referência', 'var(--brass)');
+        const advanceTo = nextSuggestedLug();
+        if (advanceTo !== -1){
+          selectLug(advanceTo);
+          setStatus('Parafuso ' + (capturedLug+1) + ' é a referência', 'agora bata no parafuso ' + (advanceTo+1) + ' (do lado oposto) e ajuste até "no ponto"', false);
+        } else {
+          setStatus('Referência definida', 'confira o painel abaixo', false);
+        }
+        return;
+      }
+
+      renderRows();
+      refreshGauges();
+
+      const dev = (freq - referenceHz) / referenceHz;
+      if (Math.abs(dev) < 0.012){
+        setReading(Math.round(freq) + ' Hz  \u2713 no ponto', 'var(--ok)');
+      } else if (dev > 0){
+        setReading(Math.round(freq) + ' Hz  \u25bc afrouxar', 'var(--tight)');
+      } else {
+        setReading(Math.round(freq) + ' Hz  \u25b2 apertar', 'var(--loose)');
+      }
+
+      const advanceTo = nextSuggestedLug();
+      if (Math.abs(dev) >= 0.012){
+        setStatus('Parafuso ' + (capturedLug+1) + ': ajuste e bata de novo', 'toque "Bater e capturar" outra vez pra ver se chegou no ponto', false);
+      } else if (advanceTo !== -1){
+        selectLug(advanceTo);
+        setStatus('Parafuso ' + (capturedLug+1) + ' no ponto', 'seguindo para o parafuso ' + (advanceTo+1), false);
+      } else {
+        setStatus('Todos os parafusos no ponto', 'confira o painel abaixo', false);
+      }
+      } catch(err){
+        setStatus('Algo deu errado na leitura', 'tente bater de novo no parafuso ' + (capturedLug+1), false);
+      }
+    }
+
+    requestAnimationFrame(frame);
+  });
+
+  // Autocorrelação para estimar a frequência fundamental de uma batida
+  function autoCorrelate(buf, sampleRate){
+    const SIZE = buf.length;
+
+    let r1 = 0, r2 = SIZE - 1;
+    const thres = 0.2;
+    for (let i=0;i<SIZE/2;i++){ if (Math.abs(buf[i]) < thres){ r1 = i; break; } }
+    for (let i=1;i<SIZE/2;i++){ if (Math.abs(buf[SIZE-i]) < thres){ r2 = SIZE-i; break; } }
+    const trimmed = buf.slice(r1, r2);
+    const n = trimmed.length;
+    if (n < 8) return -1;
+
+    const c = new Float32Array(n);
+    for (let lag=0; lag<n; lag++){
+      let sum = 0;
+      for (let j=0; j<n-lag; j++){ sum += trimmed[j]*trimmed[j+lag]; }
+      c[lag] = sum;
+    }
+
+    let d = 0;
+    while (d < n-1 && c[d] > c[d+1]) d++;
+
+    let maxVal = -1, maxPos = -1;
+    for (let i=d; i<n; i++){
+      if (c[i] > maxVal){ maxVal = c[i]; maxPos = i; }
+    }
+    if (maxPos <= 0) return -1;
+
+    const x1 = c[maxPos-1] ?? c[maxPos];
+    const x2 = c[maxPos];
+    const x3 = c[maxPos+1] ?? c[maxPos];
+    const a = (x1 + x3 - 2*x2) / 2;
+    const b = (x3 - x1) / 2;
+    let refinedPos = maxPos;
+    if (a) refinedPos = maxPos - b/(2*a);
+    if (!refinedPos || !sampleRate) return -1;
+
+    return sampleRate / refinedPos;
+  }
+
+  // ---------- Painel de leitura ----------
+
+  function renderRows(){
+    rowsEl.innerHTML = '';
+    const measured = measurements.filter(v=>v!=null);
+
+    for (let i=0;i<lugCount;i++){
+      const val = measurements[i];
+      const row = document.createElement('div');
+      row.className = 'row' + (val==null ? ' empty' : '');
+
+      const lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = 'Parafuso ' + (i+1);
+      row.appendChild(lbl);
+
+      const valEl = document.createElement('span');
+      valEl.className = 'val';
+      if (val==null){
+        valEl.textContent = '—';
+      } else {
+        const dev = referenceHz ? (val-referenceHz)/referenceHz : 0;
+        let arrow = '★ referência', color='#f2c230';
+        if (referenceHz && val !== referenceHz){
+          if (Math.abs(dev) < 0.012){ arrow = 'no ponto'; color = '#3fae55'; }
+          else if (dev > 0){ arrow = '▼ afrouxar'; color = '#e0392b'; }
+          else { arrow = '▲ apertar'; color = '#f2c230'; }
+        }
+        const hzSpan = document.createElement('span');
+        hzSpan.textContent = Math.round(val) + ' Hz';
+        const arrowSpan = document.createElement('span');
+        arrowSpan.className = 'arrow';
+        arrowSpan.style.color = color;
+        arrowSpan.textContent = arrow;
+        valEl.appendChild(hzSpan);
+        valEl.appendChild(arrowSpan);
+      }
+      row.appendChild(valEl);
+      rowsEl.appendChild(row);
+    }
+
+    if (measured.length === 0){
+      summaryEl.className = 'summary';
+      summaryEl.textContent = 'Bata no primeiro parafuso para definir a referência.';
+    } else {
+      const onPoint = measured.filter(v => Math.abs((v-referenceHz)/referenceHz) < 0.012).length;
+      if (measured.length < lugCount){
+        summaryEl.className = 'summary';
+        summaryEl.innerHTML = 'Referência: <b>' + Math.round(referenceHz) + ' Hz</b>. Faltam <b>' + (lugCount-measured.length) + '</b> parafuso(s).';
+      } else if (onPoint === lugCount){
+        summaryEl.className = 'summary success';
+        summaryEl.innerHTML = 'Tambor afinado — todos os parafusos no ponto, referência de <b>' + Math.round(referenceHz) + ' Hz</b>.';
+      } else {
+        summaryEl.className = 'summary';
+        summaryEl.innerHTML = 'Referência: <b>' + Math.round(referenceHz) + ' Hz</b>. <b>' + onPoint + '</b> de ' + lugCount + ' parafusos no ponto — ajuste os demais e bata de novo neles.';
+      }
+    }
+  }
+
+  // ---------- Reset ----------
+
+  resetBtn.addEventListener('click', ()=>{
+    measurements = new Array(lugCount).fill(null);
+    selectedLug = null;
+    referenceHz = null;
+    captureBtn.disabled = true;
+    setReading('', null);
+    buildDrum();
+    renderRows();
+    setStatus(audioCtx ? 'Reiniciado' : 'Ative o microfone para começar', 'bata no primeiro parafuso para definir a referência', false);
+  });
+
+  // ---------- Início ----------
+
+  measurements = new Array(lugCount).fill(null);
+  buildDrum();
+  renderRows();
+
+})();
+</script>
+
+</body>
+</html>
