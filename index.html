@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Afinador do Mestre Lion</title>
+<title>Afinador do Mestre Lion — Afinação Profissional</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -748,7 +748,11 @@
   const BOLT_R = 15;      // raio do círculo do parafuso
   const GAUGE_R = 24;     // raio do anel indicador
   const GAUGE_W = 5;
-  const GAUGE_MAX_DEV = 0.08; // 8% de desvio = anel cheio
+  const GAUGE_MAX_DEV = 0.05; // escala visual: 5% = anel cheio
+  const LUG_ON_POINT = 0.008;   // ±0,8% ≈ ±14 cents: ajuste fino
+  const LUG_CLOSE = 0.02;       // ±2%: ainda precisa de ajuste
+  const PITCH_MIN = 42;
+  const PITCH_MAX = 700;
 
   let lugCount = 8;
   let measurements = [];
@@ -919,7 +923,7 @@
       const dev = (val - referenceHz) / referenceHz; // positivo = mais agudo que a referência
       const mag = Math.min(Math.abs(dev)/GAUGE_MAX_DEV, 1);
       let color;
-      if (Math.abs(dev) < 0.012){ color = '#3fae55'; }
+      if (Math.abs(dev) <= LUG_ON_POINT){ color = '#3fae55'; }
       else if (dev > 0){ color = '#e0392b'; } // agudo demais -> afrouxar
       else { color = '#f2c230'; }             // grave demais -> apertar
 
@@ -949,26 +953,61 @@
   // Sugere o próximo parafuso a bater seguindo o padrão em cruz (estrela) —
   // sempre pulando para o lado mais distante do que já foi medido, em vez de
   // seguir em sequência, para não empenar o aro.
+  // Sequência de cruzamento: evita caminhar em parafusos vizinhos.
+  // A cada passo escolhemos o parafuso não medido que fica mais distante
+  // de TODOS os já medidos. Em caso de empate, priorizamos o mais oposto
+  // ao último. Isso mantém a carga distribuída pelo aro.
   function nextSuggestedLug(){
     const unmeasured = [];
     const measuredIdx = [];
     for (let i=0;i<lugCount;i++){
-      if (measurements[i]==null) unmeasured.push(i); else measuredIdx.push(i);
+      if (measurements[i] == null) unmeasured.push(i);
+      else measuredIdx.push(i);
     }
-    if (unmeasured.length === 0) return -1;
-    if (measuredIdx.length === 0) return unmeasured[0];
+    if (!unmeasured.length) return -1;
+    if (!measuredIdx.length) return 0;
 
-    let best = unmeasured[0], bestDist = -1;
+    const last = measuredIdx[measuredIdx.length - 1];
+    let best = unmeasured[0], bestScore = -Infinity;
+
     for (const cand of unmeasured){
+      const dLastRaw = Math.abs(cand-last);
+      const dLast = Math.min(dLastRaw, lugCount-dLastRaw);
       let minDist = Infinity;
+      let sumDist = 0;
       for (const m of measuredIdx){
-        const raw = Math.abs(cand - m);
-        const d = Math.min(raw, lugCount - raw);
-        if (d < minDist) minDist = d;
+        const raw = Math.abs(cand-m);
+        const d = Math.min(raw, lugCount-raw);
+        minDist = Math.min(minDist, d);
+        sumDist += d;
       }
-      if (minDist > bestDist){ bestDist = minDist; best = cand; }
+      // Primeiro critério: afastamento do conjunto já medido.
+      // Segundo: distância do último parafuso, favorecendo o cruzamento.
+      const score = minDist*10000 + dLast*100 + sumDist;
+      if (score > bestScore){ bestScore = score; best = cand; }
     }
     return best;
+  }
+
+  function crossSequence(){
+    const saved = measurements.slice();
+    measurements = new Array(lugCount).fill(null);
+    const seq = [];
+    while (seq.length < lugCount){
+      const n = nextSuggestedLug();
+      if (n < 0) break;
+      seq.push(n);
+      measurements[n] = 0;
+    }
+    measurements = saved;
+    return seq;
+  }
+
+  function nextCrossPairText(from, to){
+    if (from == null || to == null) return '';
+    const raw = Math.abs(to-from);
+    const d = Math.min(raw, lugCount-raw);
+    return d === Math.floor(lugCount/2) ? 'cruzamento oposto' : 'cruzamento distribuído';
   }
 
   // ---------- Contador de parafusos ----------
@@ -1092,268 +1131,287 @@
   micBtn.addEventListener('click', async ()=>{
     if (audioCtx) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      setStatus('Navegador sem suporte a microfone', 'tente abrir esta página no Chrome ou Safari atualizados', false);
+      setStatus('Navegador sem suporte a microfone', 'use Chrome/Edge/Safari atualizado', false);
       return;
     }
     try{
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation:false,
+          noiseSuppression:false,
+          autoGainControl:false,
+          channelCount:1
+        }
+      });
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended'){
-        try { await audioCtx.resume(); } catch(e){ /* alguns navegadores só liberam no próximo toque do usuário */ }
-      }
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
       const source = audioCtx.createMediaStreamSource(micStream);
       analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
+      analyser.fftSize = 4096;
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10;
+      analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
 
       micBtn.textContent = 'Microfone ativo';
       micBtn.classList.add('on');
       updateCaptureAvailability();
-      setStatus('Microfone pronto', mode==='center' ? 'toque "Bater e capturar" e bata no centro da pele' : 'toque em um parafuso no desenho para selecioná-lo', false);
+      setStatus('Microfone pronto', mode==='center'
+        ? 'bata no centro; o app espera o ataque e analisa o decaimento'
+        : 'selecione um parafuso e bata a 2–4 cm da borda, sempre seguindo a cruz', false);
     } catch(err){
-      audioCtx = null;
-      analyser = null;
-      if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
-      setStatus('Não consegui acessar o microfone', 'verifique a permissão do navegador e tente de novo', false);
+      audioCtx = null; analyser = null;
+      if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+      setStatus('Não consegui acessar o microfone', 'libere a permissão do navegador e tente novamente', false);
     }
   });
 
-  // ---------- Captura e detecção de tom ----------
+  // Remove DC e calcula RMS.
+  function rmsOf(buf){
+    let mean=0;
+    for(let i=0;i<buf.length;i++) mean += buf[i];
+    mean /= buf.length;
+    let sum=0;
+    for(let i=0;i<buf.length;i++){ const v=buf[i]-mean; sum += v*v; }
+    return Math.sqrt(sum/buf.length);
+  }
+
+  // Autocorrelação normalizada, limitada à faixa realista de um tambor.
+  // A normalização reduz o efeito da distância/volume do microfone.
+  function autoCorrelateDrum(buf, sampleRate, minHz=PITCH_MIN, maxHz=PITCH_MAX){
+    const N=buf.length;
+    let mean=0;
+    for(let i=0;i<N;i++) mean += buf[i];
+    mean/=N;
+    const x=new Float32Array(N);
+    let energy=0;
+    for(let i=0;i<N;i++){ x[i]=buf[i]-mean; energy += x[i]*x[i]; }
+    if(energy < 1e-7) return null;
+
+    const minLag=Math.max(2, Math.floor(sampleRate/maxHz));
+    const maxLag=Math.min(N-3, Math.ceil(sampleRate/minHz));
+    let bestLag=-1, best=-Infinity;
+    for(let lag=minLag;lag<=maxLag;lag++){
+      let sum=0, e1=0, e2=0;
+      const limit=N-lag;
+      for(let i=0;i<limit;i++){
+        const a=x[i], b=x[i+lag];
+        sum += a*b; e1 += a*a; e2 += b*b;
+      }
+      const corr=sum/Math.sqrt((e1*e2)+1e-12);
+      if(corr>best){ best=corr; bestLag=lag; }
+    }
+    if(bestLag<0 || best<0.12) return null;
+
+    // Refinamento parabólico do pico.
+    const corrAt=(lag)=>{
+      let sum=0,e1=0,e2=0; const limit=N-lag;
+      for(let i=0;i<limit;i++){ const a=x[i],b=x[i+lag]; sum+=a*b;e1+=a*a;e2+=b*b; }
+      return sum/Math.sqrt((e1*e2)+1e-12);
+    };
+    const y1=corrAt(bestLag-1), y2=best, y3=corrAt(bestLag+1);
+    const denom=(y1-2*y2+y3);
+    let refined=bestLag;
+    if(Math.abs(denom)>1e-9) refined += 0.5*(y1-y3)/denom;
+    const freq=sampleRate/refined;
+    if(!Number.isFinite(freq) || freq<minHz || freq>maxHz) return null;
+    return {freq, confidence:best};
+  }
+
+  function median(arr){
+    if(!arr.length) return null;
+    const a=arr.slice().sort((x,y)=>x-y);
+    const m=Math.floor(a.length/2);
+    return a.length%2 ? a[m] : (a[m-1]+a[m])/2;
+  }
+
+  // Analisa vários trechos do decaimento e rejeita leituras instáveis.
+  // Isso é muito mais seguro para bateria do que escolher o bloco de maior RMS.
+  async function captureDrumPitch(duration=1500){
+    const sampleRate=audioCtx.sampleRate;
+    const bufLen=analyser.fftSize;
+    const sample=new Float32Array(bufLen);
+    const candidates=[];
+    const started=performance.now();
+    let sawHit=false;
+    let lastAccepted=0;
+
+    while(performance.now()-started < duration){
+      analyser.getFloatTimeDomainData(sample);
+      const rms=rmsOf(sample);
+      const now=performance.now();
+      if(rms > 0.015) sawHit=true;
+
+      // Espera o ataque passar. Para cada janela útil, procura a fundamental.
+      if(rms > 0.008 && now-lastAccepted>45){
+        const result=autoCorrelateDrum(sample, sampleRate, PITCH_MIN, PITCH_MAX);
+        if(result && result.confidence >= 0.18){
+          candidates.push(result);
+          lastAccepted=now;
+        }
+      }
+      await new Promise(requestAnimationFrame);
+    }
+
+    if(!sawHit || !candidates.length) return {freq:null, confidence:0, count:0};
+
+    // Mediana elimina oitavas falsas e janelas contaminadas pelo ataque.
+    const freqs=candidates.map(c=>c.freq);
+    const med=median(freqs);
+    const filtered=candidates.filter(c=>Math.abs(c.freq-med)/med < 0.045);
+    const freq=median(filtered.map(c=>c.freq));
+    const confidence=filtered.length ? filtered.reduce((a,c)=>a+c.confidence,0)/filtered.length : 0;
+    return {freq, confidence, count:filtered.length, rawCount:candidates.length};
+  }
+
+  function centsBetween(a,b){
+    return 1200*Math.log2(a/b);
+  }
+
+  function classifyDeviation(freq, ref){
+    const ratio=(freq-ref)/ref;
+    const cents=centsBetween(freq,ref);
+    if(Math.abs(ratio)<=LUG_ON_POINT) return {state:'ok', text:'✓ NO PONTO', cents};
+    if(ratio>0) return {state:'high', text:'▼ AFROUXAR', cents};
+    return {state:'low', text:'▲ APERTAR', cents};
+  }
+
+  // ---------- Captura ----------
 
   captureBtn.addEventListener('click', async ()=>{
-    if ((mode === 'edge' && selectedLug==null) || !analyser || !audioCtx || listening) return;
-    listening = true;
-    captureBtn.disabled = true;
-    if (mode === 'center'){
-      setStatus('Ouvindo...', 'bata no centro da pele agora', true);
-    } else {
-      setStatus('Ouvindo...', 'bata perto do parafuso ' + (selectedLug+1) + ' agora', true);
-    }
+    if ((mode==='edge' && selectedLug==null) || !analyser || !audioCtx || listening) return;
+    listening=true; captureBtn.disabled=true;
+    const capturedLug=selectedLug;
+    const capturedMode=mode;
+    setStatus('Ouvindo...', capturedMode==='center'
+      ? 'bata uma vez no centro e deixe a pele ressoar'
+      : 'bata uma vez perto do parafuso selecionado — não bata nos vizinhos', true);
 
-    if (audioCtx.state === 'suspended'){
-      try { await audioCtx.resume(); } catch(e){ /* segue mesmo assim, tenta capturar */ }
-    }
-
-    const bufLen = analyser.fftSize;
-    const sample = new Float32Array(bufLen);
-    let best = null;
-    let bestRms = 0;
-    const start = performance.now();
-    const DURATION = 1100;
-    const capturedLug = selectedLug;
-    const capturedMode = mode;
-
-    function frame(){
-      try{
-        analyser.getFloatTimeDomainData(sample);
-        let sum = 0;
-        for (let i=0;i<bufLen;i++){ sum += sample[i]*sample[i]; }
-        const rms = Math.sqrt(sum/bufLen);
-        if (rms > bestRms){
-          bestRms = rms;
-          best = sample.slice();
-        }
-        if (performance.now() - start < DURATION){
-          requestAnimationFrame(frame);
-        } else {
-          finish();
-        }
-      } catch(err){
-        finish();
+    try{
+      if(audioCtx.state==='suspended') await audioCtx.resume();
+      const result=await captureDrumPitch(1450);
+      if(!result.freq){
+        setStatus('Não consegui uma leitura estável', 'bata uma vez mais forte e aproxime o microfone do tambor', false);
+        return;
       }
-    }
+      const freq=result.freq;
+      const confidenceTxt=Math.round(result.confidence*100)+'%';
+      const note=hzToNote(freq);
 
-    function finish(){
-      listening = false;
-      captureBtn.disabled = false;
-      try{
-        const targetDesc = capturedMode === 'center' ? 'no centro da pele' : 'perto do parafuso ' + (capturedLug+1);
-        if (bestRms < 0.02 || !best){
-          setStatus('Não captei nenhuma batida', 'bata um pouco mais forte, ' + targetDesc, false);
-          return;
-        }
-        const freq = autoCorrelate(best, audioCtx.sampleRate);
-        if (!Number.isFinite(freq) || freq < 40 || freq > 2000){
-          setStatus('Som pouco claro, tente de novo', 'evite ruído de fundo ao bater', false);
-          return;
-        }
-
-      if (capturedMode === 'center'){
+      if(capturedMode==='center'){
         flashCenter();
-        if (centerReferenceHz == null){
-          centerReferenceHz = freq;
-          savePresetBtn.disabled = false;
-          setReading(Math.round(freq) + ' Hz  \u2605 fundamental de referência', 'var(--brass)');
+        if(centerReferenceHz==null){
+          centerReferenceHz=freq;
+          savePresetBtn.disabled=false;
+          setReading(freq.toFixed(1)+' Hz  ★ FUNDAMENTAL', 'var(--brass)');
           setReadingNote(freq);
-          setStatus('Fundamental de referência definida', 'bata de novo no centro pra comparar depois de ajustar', false);
-        } else {
-          const devC = (freq - centerReferenceHz) / centerReferenceHz;
-          const offsetHzC = Math.round(freq - centerReferenceHz);
-          const offsetTxtC = (offsetHzC > 0 ? '+' : '') + offsetHzC + ' Hz';
-          if (Math.abs(devC) < 0.012){
-            setReading(Math.round(freq) + ' Hz (' + offsetTxtC + ')  \u2713 no ponto', 'var(--ok)');
-            setStatus('Fundamental no ponto', 'a pele está equilibrada em relação à referência', false);
-          } else if (devC > 0){
-            setReading(Math.round(freq) + ' Hz (' + offsetTxtC + ')  \u25bc afrouxar geral', 'var(--tight)');
-            setStatus('Fundamental acima da referência', 'afrouxe os parafusos igualmente e bata de novo no centro', false);
-          } else {
-            setReading(Math.round(freq) + ' Hz (' + offsetTxtC + ')  \u25b2 apertar geral', 'var(--loose)');
-            setStatus('Fundamental abaixo da referência', 'aperte os parafusos igualmente e bata de novo no centro', false);
+          setStatus('Fundamental de referência definida', (note?note.label+' · ':'')+'estabilidade '+confidenceTxt+'. Bata novamente após ajustar.', false);
+        }else{
+          const d=classifyDeviation(freq,centerReferenceHz);
+          const offC=Math.round(d.cents);
+          const offTxt=(offC>0?'+':'')+offC+'¢';
+          if(d.state==='ok'){
+            setReading(freq.toFixed(1)+' Hz ('+offTxt+')  ✓ NO PONTO','var(--ok)');
+            setStatus('Fundamental no ponto','não aperte um único parafuso; qualquer correção deve ser distribuída em cruz',false);
+          }else if(d.state==='high'){
+            setReading(freq.toFixed(1)+' Hz ('+offTxt+')  ▼ AFROUXAR GERAL','var(--tight)');
+            setStatus('Fundamental acima da referência','afrouxe TODOS os parafusos em pequenos passos, sempre em cruz',false);
+          }else{
+            setReading(freq.toFixed(1)+' Hz ('+offTxt+')  ▲ APERTAR GERAL','var(--loose)');
+            setStatus('Fundamental abaixo da referência','aperte TODOS os parafusos em pequenos passos, sempre em cruz',false);
           }
           setReadingNote(freq);
         }
         return;
       }
 
-      measurements[capturedLug] = freq;
+      measurements[capturedLug]=freq;
       flashLug(capturedLug);
 
-      if (referenceHz == null){
-        referenceHz = freq;
-        savePresetBtn.disabled = false;
-        renderRows();
-        refreshGauges();
-        setReading(Math.round(freq) + ' Hz  \u2605 referência', 'var(--brass)');
+      if(referenceHz==null){
+        referenceHz=freq;
+        savePresetBtn.disabled=false;
+        renderRows(); refreshGauges();
+        setReading(freq.toFixed(1)+' Hz  ★ REFERÊNCIA','var(--brass)');
         setReadingNote(freq);
-        const advanceTo = nextSuggestedLug();
-        if (advanceTo !== -1){
-          selectLug(advanceTo);
-          setStatus('Parafuso ' + (capturedLug+1) + ' é a referência', 'agora bata no parafuso ' + (advanceTo+1) + ' (do lado oposto) e ajuste até "no ponto"', false);
-        } else {
-          setStatus('Referência definida', 'confira o painel abaixo', false);
+        const next=nextSuggestedLug();
+        if(next!==-1){
+          selectLug(next);
+          setStatus('Parafuso '+(capturedLug+1)+' = referência', 'agora vá ao parafuso '+(next+1)+' · '+nextCrossPairText(capturedLug,next)+' · nunca siga para o vizinho', false);
         }
         return;
       }
 
-      renderRows();
-      refreshGauges();
-
-      const dev = (freq - referenceHz) / referenceHz;
-      const offsetHz = Math.round(freq - referenceHz);
-      const offsetTxt = (offsetHz > 0 ? '+' : '') + offsetHz + ' Hz';
-      if (Math.abs(dev) < 0.012){
-        setReading(Math.round(freq) + ' Hz (' + offsetTxt + ')  \u2713 no ponto', 'var(--ok)');
-      } else if (dev > 0){
-        setReading(Math.round(freq) + ' Hz (' + offsetTxt + ')  \u25bc afrouxar', 'var(--tight)');
-      } else {
-        setReading(Math.round(freq) + ' Hz (' + offsetTxt + ')  \u25b2 apertar', 'var(--loose)');
-      }
+      renderRows(); refreshGauges();
+      const d=classifyDeviation(freq,referenceHz);
+      const offC=Math.round(d.cents);
+      const offTxt=(offC>0?'+':'')+offC+'¢';
+      const hzOff=(freq-referenceHz).toFixed(1);
+      if(d.state==='ok') setReading(freq.toFixed(1)+' Hz ('+(hzOff>0?'+':'')+hzOff+' Hz · '+offTxt+') ✓ NO PONTO','var(--ok)');
+      else if(d.state==='high') setReading(freq.toFixed(1)+' Hz ('+(hzOff>0?'+':'')+hzOff+' Hz · '+offTxt+') ▼ AFROUXAR','var(--tight)');
+      else setReading(freq.toFixed(1)+' Hz ('+(hzOff>0?'+':'')+hzOff+' Hz · '+offTxt+') ▲ APERTAR','var(--loose)');
       setReadingNote(freq);
 
-      const advanceTo = nextSuggestedLug();
-      if (Math.abs(dev) >= 0.012){
-        setStatus('Parafuso ' + (capturedLug+1) + ': ajuste e bata de novo', 'toque "Bater e capturar" outra vez pra ver se chegou no ponto', false);
-      } else if (advanceTo !== -1){
-        selectLug(advanceTo);
-        setStatus('Parafuso ' + (capturedLug+1) + ' no ponto', 'seguindo para o parafuso ' + (advanceTo+1), false);
-      } else {
-        setStatus('Todos os parafusos no ponto', 'confira o painel abaixo', false);
+      const next=nextSuggestedLug();
+      if(d.state!=='ok'){
+        setStatus('Parafuso '+(capturedLug+1)+': '+d.text, 'faça apenas um pequeno ajuste e meça o MESMO parafuso novamente', false);
+      }else if(next!==-1){
+        selectLug(next);
+        setStatus('Parafuso '+(capturedLug+1)+' no ponto', 'próximo: '+(next+1)+' · '+nextCrossPairText(capturedLug,next), false);
+      }else{
+        setStatus('Primeira passada concluída','agora faça uma segunda passada em cruz para confirmar a uniformidade',false);
       }
-      } catch(err){
-        setStatus('Algo deu errado na leitura', 'tente bater de novo', false);
-      }
+    }catch(err){
+      console.error(err);
+      setStatus('Falha na leitura','tente novamente em silêncio e com uma única batida',false);
+    }finally{
+      listening=false;
+      updateCaptureAvailability();
     }
-
-    requestAnimationFrame(frame);
   });
-
-  // Autocorrelação para estimar a frequência fundamental de uma batida
-  function autoCorrelate(buf, sampleRate){
-    const SIZE = buf.length;
-
-    let r1 = 0, r2 = SIZE - 1;
-    const thres = 0.2;
-    for (let i=0;i<SIZE/2;i++){ if (Math.abs(buf[i]) < thres){ r1 = i; break; } }
-    for (let i=1;i<SIZE/2;i++){ if (Math.abs(buf[SIZE-i]) < thres){ r2 = SIZE-i; break; } }
-    const trimmed = buf.slice(r1, r2);
-    const n = trimmed.length;
-    if (n < 8) return -1;
-
-    const c = new Float32Array(n);
-    for (let lag=0; lag<n; lag++){
-      let sum = 0;
-      for (let j=0; j<n-lag; j++){ sum += trimmed[j]*trimmed[j+lag]; }
-      c[lag] = sum;
-    }
-
-    let d = 0;
-    while (d < n-1 && c[d] > c[d+1]) d++;
-
-    let maxVal = -1, maxPos = -1;
-    for (let i=d; i<n; i++){
-      if (c[i] > maxVal){ maxVal = c[i]; maxPos = i; }
-    }
-    if (maxPos <= 0) return -1;
-
-    const x1 = c[maxPos-1] ?? c[maxPos];
-    const x2 = c[maxPos];
-    const x3 = c[maxPos+1] ?? c[maxPos];
-    const a = (x1 + x3 - 2*x2) / 2;
-    const b = (x3 - x1) / 2;
-    let refinedPos = maxPos;
-    if (a) refinedPos = maxPos - b/(2*a);
-    if (!refinedPos || !sampleRate) return -1;
-
-    return sampleRate / refinedPos;
-  }
 
   // ---------- Painel de leitura ----------
 
   function renderRows(){
-    rowsEl.innerHTML = '';
-    const measured = measurements.filter(v=>v!=null);
+    rowsEl.innerHTML='';
+    const measured=measurements.filter(v=>v!=null);
+    const onPoint=referenceHz ? measured.filter(v=>Math.abs((v-referenceHz)/referenceHz)<=LUG_ON_POINT).length : 0;
+    const spread=measured.length ? Math.max(...measured)-Math.min(...measured) : 0;
+    const avg=measured.length ? measured.reduce((a,b)=>a+b,0)/measured.length : null;
 
-    for (let i=0;i<lugCount;i++){
-      const val = measurements[i];
-      const row = document.createElement('div');
-      row.className = 'row' + (val==null ? ' empty' : '');
-
-      const lbl = document.createElement('span');
-      lbl.className = 'lbl';
-      lbl.textContent = 'Parafuso ' + (i+1);
-      row.appendChild(lbl);
-
-      const valEl = document.createElement('span');
-      valEl.className = 'val';
-      if (val==null){
-        valEl.textContent = '—';
-      } else {
-        const dev = referenceHz ? (val-referenceHz)/referenceHz : 0;
-        const offsetHz = referenceHz ? Math.round(val-referenceHz) : 0;
-        const offsetTxt = (offsetHz > 0 ? '+' : '') + offsetHz + ' Hz';
-        let arrow = '★ referência', color='#f2c230';
-        if (referenceHz && val !== referenceHz){
-          if (Math.abs(dev) < 0.012){ arrow = 'no ponto (' + offsetTxt + ')'; color = '#3fae55'; }
-          else if (dev > 0){ arrow = '▼ afrouxar (' + offsetTxt + ')'; color = '#e0392b'; }
-          else { arrow = '▲ apertar (' + offsetTxt + ')'; color = '#f2c230'; }
-        }
-        const hzSpan = document.createElement('span');
-        hzSpan.textContent = Math.round(val) + ' Hz';
-        const arrowSpan = document.createElement('span');
-        arrowSpan.className = 'arrow';
-        arrowSpan.style.color = color;
-        arrowSpan.textContent = arrow;
-        valEl.appendChild(hzSpan);
-        valEl.appendChild(arrowSpan);
+    for(let i=0;i<lugCount;i++){
+      const val=measurements[i];
+      const row=document.createElement('div');
+      row.className='row'+(val==null?' empty':'');
+      const lbl=document.createElement('span'); lbl.className='lbl'; lbl.textContent='Parafuso '+(i+1); row.appendChild(lbl);
+      const valEl=document.createElement('span'); valEl.className='val';
+      if(val==null){ valEl.textContent='—'; }
+      else{
+        const d=referenceHz ? classifyDeviation(val,referenceHz) : {state:'ref',text:'★ REFERÊNCIA',cents:0};
+        const hzSpan=document.createElement('span'); hzSpan.textContent=val.toFixed(1)+' Hz';
+        const arrowSpan=document.createElement('span'); arrowSpan.className='arrow';
+        arrowSpan.style.color=d.state==='ok'?'#3fae55':d.state==='high'?'#e0392b':d.state==='low'?'#f2c230':'#f2c230';
+        const c=Math.round(d.cents); const ct=(c>0?'+':'')+c+'¢';
+        arrowSpan.textContent=(d.state==='ref'?'★ referência':d.text+' ('+ct+')');
+        valEl.appendChild(hzSpan); valEl.appendChild(arrowSpan);
       }
-      row.appendChild(valEl);
-      rowsEl.appendChild(row);
+      row.appendChild(valEl); rowsEl.appendChild(row);
     }
 
-    if (measured.length === 0){
-      summaryEl.className = 'summary';
-      summaryEl.textContent = 'Bata no primeiro parafuso para definir a referência.';
-    } else {
-      const onPoint = measured.filter(v => Math.abs((v-referenceHz)/referenceHz) < 0.012).length;
-      if (measured.length < lugCount){
-        summaryEl.className = 'summary';
-        summaryEl.innerHTML = 'Referência: <b>' + Math.round(referenceHz) + ' Hz</b>. Faltam <b>' + (lugCount-measured.length) + '</b> parafuso(s).';
-      } else if (onPoint === lugCount){
-        summaryEl.className = 'summary success';
-        summaryEl.innerHTML = 'Tambor afinado — todos os parafusos no ponto, referência de <b>' + Math.round(referenceHz) + ' Hz</b>.';
-      } else {
-        summaryEl.className = 'summary';
-        summaryEl.innerHTML = 'Referência: <b>' + Math.round(referenceHz) + ' Hz</b>. <b>' + onPoint + '</b> de ' + lugCount + ' parafusos no ponto — ajuste os demais e bata de novo neles.';
+    if(!measured.length){
+      summaryEl.className='summary';
+      summaryEl.textContent='Comece pelo parafuso 1. O próximo será escolhido automaticamente em cruz — nunca em sequência.';
+    }else if(measured.length<lugCount){
+      summaryEl.className='summary';
+      summaryEl.innerHTML='Referência: <b>'+referenceHz.toFixed(1)+' Hz</b>. <b>'+onPoint+'/'+measured.length+'</b> medidos no ponto. Faltam <b>'+(lugCount-measured.length)+'</b>. Próximo sempre em cruz.';
+    }else{
+      const spreadPct=(spread/referenceHz*100).toFixed(2);
+      if(onPoint===lugCount){
+        summaryEl.className='summary success';
+        summaryEl.innerHTML='Uniformidade excelente — <b>'+lugCount+'/'+lugCount+'</b> no ponto. Referência <b>'+referenceHz.toFixed(1)+' Hz</b> · diferença máxima <b>'+spreadPct+'%</b>. Faça uma segunda passada em cruz antes do show.';
+      }else{
+        summaryEl.className='summary';
+        summaryEl.innerHTML='Referência <b>'+referenceHz.toFixed(1)+' Hz</b> · <b>'+onPoint+'/'+lugCount+'</b> no ponto · diferença máxima <b>'+spreadPct+'%</b>. Ajuste os vermelhos/amarelos e confirme em cruz.';
       }
     }
   }
@@ -1373,7 +1431,7 @@
     if (mode === 'center'){
       setStatus(audioCtx ? 'Reiniciado' : 'Ative o microfone para começar', 'bata no centro da pele para definir a referência', false);
     } else {
-      setStatus(audioCtx ? 'Reiniciado' : 'Ative o microfone para começar', 'bata no primeiro parafuso para definir a referência', false);
+      setStatus(audioCtx ? 'Reiniciado' : 'Ative o microfone para começar', 'bata no parafuso 1; o próximo será escolhido automaticamente em cruz', false);
     }
   });
 
