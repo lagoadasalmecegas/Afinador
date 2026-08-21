@@ -242,6 +242,8 @@
     justify-content:center;
     margin: 18px 0 4px;
   }
+  .continuous-btn{margin-top:10px;border:1px solid var(--brass);color:var(--brass);background:transparent;}
+  .continuous-btn.on{background:var(--brass);color:#111;}
 
   #micBtn{
     font-family:'Inter', sans-serif;
@@ -624,6 +626,7 @@
 
     <div class="mic-row">
       <button id="micBtn">Ativar microfone</button>
+      <button id="continuousBtn" class="ghost-btn continuous-btn" disabled>🎙 Afinador contínuo: OFF</button>
     </div>
 
     <div class="stage-toggle">
@@ -725,6 +728,7 @@
   const svg = document.getElementById('drumSvg');
   const lugcountEl = document.getElementById('lugcount');
   const micBtn = document.getElementById('micBtn');
+  const continuousBtn = document.getElementById('continuousBtn');
   const captureBtn = document.getElementById('captureBtn');
   const resetBtn = document.getElementById('resetBtn');
   const statusMsg = document.getElementById('statusMsg');
@@ -766,6 +770,13 @@
   let analyser = null;
   let micStream = null;
   let listening = false;
+  let continuousMode = false;
+  let continuousRunning = false;
+  let continuousBusy = false;
+  let continuousRaf = 0;
+  let lastContinuousHit = 0;
+  let armedForHit = true;
+  let noiseFloor = 0.004;
 
   function setStatus(msg, sub, dotOn){
     statusMsg.innerHTML = '<span class="dot ' + (dotOn ? 'listening' : '') + '" id="statusDot"></span>' + msg;
@@ -936,10 +947,14 @@
 
   function updateCaptureAvailability(){
     const micReady = !!(audioCtx && micStream);
-    if (mode === 'center'){
-      captureBtn.disabled = !micReady;
+    continuousBtn.disabled = !micReady;
+    if (continuousMode){
+      captureBtn.disabled = true;
+      captureBtn.textContent = 'Afinador contínuo ativo';
     } else {
-      captureBtn.disabled = !micReady || selectedLug == null;
+      if (mode === 'center') captureBtn.disabled = !micReady;
+      else captureBtn.disabled = !micReady || selectedLug == null;
+      captureBtn.textContent = 'Bater e capturar';
     }
   }
 
@@ -947,7 +962,7 @@
     selectedLug = i;
     updateCaptureAvailability();
     refreshGauges();
-    setStatus('Parafuso ' + (i+1) + ' selecionado', 'toque "Bater e capturar" e bata perto dele', false);
+    setStatus('Parafuso ' + (i+1) + ' selecionado', continuousMode ? 'afinador contínuo ligado — bata uma vez perto deste parafuso' : 'toque "Bater e capturar" e bata perto dele', false);
   }
 
   // Sugere o próximo parafuso a bater seguindo o padrão em cruz (estrela) —
@@ -1156,9 +1171,7 @@
       micBtn.textContent = 'Microfone ativo';
       micBtn.classList.add('on');
       updateCaptureAvailability();
-      setStatus('Microfone pronto', mode==='center'
-        ? 'bata no centro; o app espera o ataque e analisa o decaimento'
-        : 'selecione um parafuso e bata a 2–4 cm da borda, sempre seguindo a cruz', false);
+      startContinuous();
     } catch(err){
       audioCtx = null; analyser = null;
       if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
@@ -1275,6 +1288,114 @@
     if(ratio>0) return {state:'high', text:'▼ AFROUXAR', cents};
     return {state:'low', text:'▲ APERTAR', cents};
   }
+
+  // ---------- Afinador contínuo (estilo afinador de guitarra) ----------
+  function peakOf(buf){
+    let p=0; for(let i=0;i<buf.length;i++) p=Math.max(p,Math.abs(buf[i])); return p;
+  }
+  function continuousLevel(buf){
+    const rms=rmsOf(buf), peak=peakOf(buf); return {rms,peak,crest:peak/(rms+1e-9)};
+  }
+  function setContinuousUi(on){
+    continuousMode=on;
+    continuousBtn.classList.toggle('on',on);
+    continuousBtn.textContent=on?'🎙 Afinador contínuo: ON':'🎙 Afinador contínuo: OFF';
+    updateCaptureAvailability();
+  }
+  async function analyzeContinuousHit(){
+    if(continuousBusy || !analyser || !audioCtx) return;
+    continuousBusy=true;
+    const sampleRate=audioCtx.sampleRate, sample=new Float32Array(analyser.fftSize), candidates=[];
+    const started=performance.now();
+    while(performance.now()-started<520){
+      analyser.getFloatTimeDomainData(sample);
+      const rms=rmsOf(sample);
+      if(rms>Math.max(0.006,noiseFloor*1.8)){
+        const r=autoCorrelateDrum(sample,sampleRate,PITCH_MIN,PITCH_MAX);
+        if(r&&r.confidence>=0.16) candidates.push(r);
+      }
+      await new Promise(requestAnimationFrame);
+    }
+    if(candidates.length){
+      const med=median(candidates.map(c=>c.freq));
+      const good=candidates.filter(c=>Math.abs(c.freq-med)/med<0.04);
+      if(good.length){
+        const freq=median(good.map(c=>c.freq));
+        const conf=good.reduce((a,c)=>a+c.confidence,0)/good.length;
+        processContinuousReading(freq,conf);
+      }
+    }else setStatus('Batida detectada, mas leitura instável','espere a pele assentar e bata novamente',false);
+    continuousBusy=false; armedForHit=false;
+  }
+  function processContinuousReading(freq,confidence){
+    const note=hzToNote(freq); setReadingNote(freq);
+    if(mode==='center'){
+      flashCenter();
+      if(centerReferenceHz==null){
+        centerReferenceHz=freq; savePresetBtn.disabled=false;
+        setReading(freq.toFixed(1)+' Hz ★ FUNDAMENTAL','var(--brass)');
+        setStatus('Referência definida — afinador contínuo pronto',(note?note.label+' · ':'')+'bata novamente para conferir',false);
+      }else{
+        const d=classifyDeviation(freq,centerReferenceHz), c=Math.round(d.cents), sign=c>0?'+':'';
+        if(d.state==='ok'){
+          setReading(freq.toFixed(1)+' Hz ('+sign+c+'¢) ✓ NO PONTO','var(--ok)');
+          setStatus('CENTRO NO PONTO','bata novamente para confirmar; se precisar corrigir, distribua o ajuste em cruz',false);
+        }else if(d.state==='high'){
+          setReading(freq.toFixed(1)+' Hz ('+sign+c+'¢) ▼ AFROUXAR GERAL','var(--tight)');
+          setStatus('CENTRO ALTO — AFROUXAR','faça pequenos ajustes iguais em cruz e bata novamente',false);
+        }else{
+          setReading(freq.toFixed(1)+' Hz ('+sign+c+'¢) ▲ APERTAR GERAL','var(--loose)');
+          setStatus('CENTRO BAIXO — APERTAR','faça pequenos ajustes iguais em cruz e bata novamente',false);
+        }
+      }
+      return;
+    }
+    if(selectedLug==null){ const first=nextSuggestedLug(); if(first!==-1) selectLug(first); }
+    const lug=selectedLug; if(lug==null) return;
+    measurements[lug]=freq; flashLug(lug);
+    if(referenceHz==null){
+      referenceHz=freq; savePresetBtn.disabled=false; renderRows(); refreshGauges();
+      setReading(freq.toFixed(1)+' Hz ★ REFERÊNCIA','var(--brass)');
+      const next=nextSuggestedLug();
+      if(next!==-1){ selectLug(next); setStatus('PARAFUSO '+(lug+1)+' = REFERÊNCIA','agora bata no '+(next+1)+' — o microfone continua ouvindo sozinho',false); }
+      return;
+    }
+    const d=classifyDeviation(freq,referenceHz), c=Math.round(d.cents), sign=c>0?'+':'';
+    if(d.state==='ok') setReading(freq.toFixed(1)+' Hz ('+sign+c+'¢) ✓ NO PONTO','var(--ok)');
+    else if(d.state==='high') setReading(freq.toFixed(1)+' Hz ('+sign+c+'¢) ▼ AFROUXAR','var(--tight)');
+    else setReading(freq.toFixed(1)+' Hz ('+sign+c+'¢) ▲ APERTAR','var(--loose)');
+    renderRows(); refreshGauges();
+    if(d.state==='ok'){
+      const next=nextSuggestedLug();
+      if(next!==-1){ selectLug(next); setStatus('PARAFUSO '+(lug+1)+' ✓ NO PONTO','agora bata no '+(next+1)+' — cruzando, nunca no vizinho',false); }
+      else setStatus('PRIMEIRA PASSADA CONCLUÍDA','faça uma segunda passada em cruz para a verificação final',false);
+    }else setStatus('PARAFUSO '+(lug+1)+' — '+d.text,'faça um pequeno ajuste e bata novamente no MESMO parafuso',false);
+  }
+  function continuousLoop(){
+    if(!continuousRunning||!analyser) return;
+    const sample=new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(sample);
+    const level=continuousLevel(sample);
+    if(!continuousBusy&&level.rms<Math.max(0.012,noiseFloor*2.2)) noiseFloor=noiseFloor*0.97+level.rms*0.03;
+    const threshold=Math.max(0.012,noiseFloor*3.2), now=performance.now();
+    const hit=level.rms>threshold&&level.crest>2.2;
+    if(hit&&armedForHit&&!continuousBusy&&now-lastContinuousHit>650){
+      lastContinuousHit=now; armedForHit=false; analyzeContinuousHit();
+    }
+    if(!continuousBusy&&level.rms<Math.max(0.008,noiseFloor*1.7)) armedForHit=true;
+    continuousRaf=requestAnimationFrame(continuousLoop);
+  }
+  function startContinuous(){
+    if(!analyser||continuousRunning) return;
+    continuousRunning=true; noiseFloor=0.004; armedForHit=true; lastContinuousHit=0;
+    if(mode==='edge'&&selectedLug==null){ const first=nextSuggestedLug(); selectLug(first===-1?0:first); }
+    setContinuousUi(true);
+    setStatus('AFINADOR CONTÍNUO ATIVO','bata uma vez; não precisa apertar nenhum botão. Ajuste e bata novamente.',true);
+    continuousLoop();
+  }
+  function stopContinuous(){
+    continuousRunning=false; if(continuousRaf) cancelAnimationFrame(continuousRaf); continuousRaf=0; continuousBusy=false; setContinuousUi(false);
+  }
+  continuousBtn.addEventListener('click',()=>{ if(!audioCtx) return; if(continuousMode) stopContinuous(); else startContinuous(); });
 
   // ---------- Captura ----------
 
@@ -1419,6 +1540,7 @@
   // ---------- Reset ----------
 
   resetBtn.addEventListener('click', ()=>{
+    if(continuousMode) stopContinuous();
     measurements = new Array(lugCount).fill(null);
     selectedLug = null;
     referenceHz = null;
