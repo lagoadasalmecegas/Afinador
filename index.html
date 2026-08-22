@@ -225,9 +225,9 @@
   }
   .mode-toggle button:hover{ border-color: var(--brass-dim); color: var(--cream); }
   .mode-toggle button.active{
-    background: var(--tight);
-    color: var(--cream);
-    border-color: var(--tight);
+    background: var(--ok);
+    color: #0f2116;
+    border-color: var(--ok);
   }
 
   body.mode-center .lugcount{ display:none; }
@@ -733,7 +733,7 @@
     </div>
 
     <div class="actions">
-      <button class="primary-btn" id="continuousBtn">Escuta contínua: ligada</button>
+      <button class="primary-btn" id="continuousBtn">Escuta contínua: LIGADA</button>
     </div>
 
     <div class="actions">
@@ -1401,7 +1401,7 @@
 
   continuousBtn.addEventListener('click', ()=>{
     continuousListening = !continuousListening;
-    continuousBtn.textContent = 'Escuta contínua: ' + (continuousListening ? 'ligada' : 'desligada');
+    continuousBtn.textContent = 'Escuta contínua: ' + (continuousListening ? 'LIGADA' : 'DESLIGADA');
     continuousBtn.classList.toggle('off', !continuousListening);
   });
 
