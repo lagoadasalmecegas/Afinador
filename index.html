@@ -117,6 +117,78 @@
   .stage-exit{ position:absolute; top:calc(10px + env(safe-area-inset-top)); right:12px; z-index:50; background:rgba(0,0,0,0.45); border:1px solid var(--line); color:var(--muted); border-radius:10px; padding:9px 13px; font-size:11px; font-weight:600; display:none; }
   body.stage-mode .stage-exit{ display:block; }
 
+  /* Ponteiro de volta (design do gauge antigo) */
+  .gauge-wrap{
+    flex:0 0 auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:0 14px 4px;
+  }
+  .gauge-wrap svg{ width:100%; max-width:340px; height:auto; display:block; }
+  .gauge-band{
+    fill:none;
+    stroke-width: 16;
+    stroke-linecap: butt;
+    opacity: 0.85;
+  }
+  .band-loose{ stroke: var(--loose); }
+  .band-ok{ stroke: var(--ok); }
+  .band-tight{ stroke: var(--tight); }
+  .needle-line{
+    stroke: #55e07a;
+    stroke-width: 5;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px rgba(85,224,122,0.65));
+    transition: none;
+  }
+  #needleGroup{ transition: transform .25s cubic-bezier(.34,1.4,.64,1); }
+  #needleGroup.idle .needle-line{ stroke: var(--line); filter:none; }
+  .needle-pivot{
+    fill: #17301f;
+    stroke: #55e07a;
+    stroke-width: 3;
+  }
+  #needleGroup.idle .needle-pivot{ stroke: var(--line); }
+  .gauge-labels{
+    display:flex;
+    justify-content:space-between;
+    margin-top: -6px;
+    padding: 0 6px;
+    width:100%;
+    max-width:340px;
+    font-family:'Inter', sans-serif;
+    font-size:10.5px;
+    color:var(--muted);
+  }
+  /* Aviso de batida rejeitada: pequeno, cinzento, some sozinho */
+  .hit-warn{
+    font-size:32px;
+    font-family:'Oswald', sans-serif;
+    font-weight:600;
+    color:var(--muted);
+    text-align:center;
+    min-height:1.1em;
+    opacity:0;
+    transition:opacity .2s;
+  }
+  .hit-warn.show{ opacity:1; }
+  .consistency-warn{
+    font-size:20px;
+    font-family:'Oswald', sans-serif;
+    font-weight:600;
+    color:var(--muted);
+    text-align:center;
+    min-height:1.1em;
+    opacity:0;
+    transition:opacity .2s;
+  }
+  .consistency-warn.show{ opacity:1; }
+  /* No modo palco o ponteiro fica maior mas continua visivel */
+  body.stage-mode .gauge-wrap{ padding-top:0; }
+  body.stage-mode .gauge-wrap svg{ width:60%; max-width:500px; }
+  body.stage-mode .gauge-labels{ max-width:500px; }
+
   /* Tela 2: Kit */
   .screen-h{ font-family:'Oswald', sans-serif; font-size:22px; font-weight:700; margin:6px 0 2px; }
   .screen-note{ font-size:12.5px; color:var(--muted); margin:0 0 12px; line-height:1.4; }
@@ -170,10 +242,9 @@
   .switch::after{ content:''; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:var(--muted); transition:transform .18s, background .18s; }
   .switch.on{ background:var(--ok); border-color:var(--ok); }
   .switch.on::after{ transform:translateX(20px); background:#0e1512; }
-  .sens-row{ display:flex; align-items:center; gap:11px; }
-  .sens-row input[type=range]{ flex:1 1 auto; accent-color:var(--brass); height:22px; }
   .meter{ flex:0 0 74px; height:8px; background:var(--panel-2); border:1px solid var(--line); border-radius:4px; overflow:hidden; }
   .meter i{ display:block; height:100%; width:0%; background:var(--ok); transition:width .1s linear; }
+  .set-hint{ font-size:11.5px; color:var(--muted); margin:9px 0 0; line-height:1.4; }
   .about{ font-size:12px; color:var(--muted); line-height:1.6; }
   .about a{ color:var(--brass); }
 </style>
@@ -204,6 +275,25 @@
 
     <div class="stage-wrap">
       <svg id="drumSvg" viewBox="0 0 500 500"></svg>
+    </div>
+
+    <div class="gauge-wrap">
+      <svg id="needleGauge" viewBox="0 0 260 150">
+        <path d="M 30 140 A 100 100 0 0 1 80 53.4" class="gauge-band band-loose"></path>
+        <path d="M 80 53.4 A 100 100 0 0 1 180 53.4" class="gauge-band band-ok"></path>
+        <path d="M 180 53.4 A 100 100 0 0 1 230 140" class="gauge-band band-tight"></path>
+        <g id="needleGroup" transform="rotate(0 130 140)">
+          <line x1="130" y1="140" x2="130" y2="48" class="needle-line"></line>
+          <circle cx="130" cy="140" r="9" class="needle-pivot"></circle>
+        </g>
+      </svg>
+      <div class="gauge-labels">
+        <span>Apertar</span>
+        <span>No ponto</span>
+        <span>Afrouxar</span>
+      </div>
+      <div class="hit-warn" id="hitWarn"></div>
+      <div class="consistency-warn" id="consistencyWarn"></div>
     </div>
 
     <div class="readout">
@@ -290,10 +380,22 @@
 
       <div class="set-group">
         <div class="set-title">SENSIBILIDADE DO MICROFONE</div>
-        <div class="sens-row">
-          <input type="range" id="sensRange" min="0" max="100" value="45">
-          <div class="meter"><i id="sensMeter"></i></div>
+        <div class="opt">
+          <input type="radio" name="sens" value="baixa" checked>
+          <span class="opt-label">Baixa</span>
+          <span class="opt-desc">0.08</span>
         </div>
+        <div class="opt">
+          <input type="radio" name="sens" value="media">
+          <span class="opt-label">Média</span>
+          <span class="opt-desc">0.04</span>
+        </div>
+        <div class="opt">
+          <input type="radio" name="sens" value="alta">
+          <span class="opt-label">Alta</span>
+          <span class="opt-desc">0.02</span>
+        </div>
+        <p class="set-hint">Ambiente muito ruidoso (palco com PA) · ensaio normal · ambiente silencioso.</p>
       </div>
 
       <div class="set-group">
@@ -343,6 +445,21 @@ const ONSET_RMS = 0.018;
 const REFRACTORY_MS = 350;
 const REJECT_DEV = 0.08;   // alvo travado: >8% é overtone, descarta
 
+// Ponteiro de volta
+const GAUGE_MAX_DEV = 0.08;   // saturacao a +-8% de desvio
+const GAUGE_MAX_ANGLE = 80;   // +-80 graus
+const NEEDLE_PIVOT = '130 140';
+
+// Deteção de dinâmica (Melhoria 2)
+const HIT_PICO_MIN = 0.04;    // abaixo disto: "bate mais forte"
+const HIT_PICO_MAX = 0.5;     // acima disto: "bate mais leve"
+const HIT_DURACAO_MAX = 300;  // acima disto e som continuo: prato/PA, ignora
+const HIT_DURACAO_RMS = 0.015; // limiar para medir a duracao
+const CONSISTENCY_N = 3;       // ultimas leituras aceites a comparar
+const CONSISTENCY_DEV = 0.15; // desvio maximo entre elas
+const SENS_KEY = 'mestrelion_sensibilidade';
+const SENS_PRESETS = { baixa: 0.08, media: 0.04, alta: 0.02 };
+
 const SETTINGS_KEY = 'mestrelion_settings_v2';
 const KIT_KEY = 'mestrelion_kit_v2';
 
@@ -374,8 +491,12 @@ let lockedTargetHz = null;
 let refHz = null;
 let lastHit = 0;
 let sustainByLug = {};
+// dinamica: calibracao e consistencia por parafuso
+let onsetRms = 0.04;          // limiar ajustado pela primeira batida
+let calibrated = false;
+let recentReads = {};         // ultimas leituras por parafuso (consistencia)
 
-let tol = 0.04, sens = 0.45, beep = false, vib = false;
+let tol = 0.04, beep = false, vib = false;
 let audioCtx = null, analyser = null, micStream = null, listening = false, loopActive = true;
 let lugCount = 8;
 
@@ -385,10 +506,12 @@ const svg = $('drumSvg');
 const bigWord = $('bigWord'), bigHz = $('bigHz'), vsMedia = $('vsMedia'), statusLine = $('statusLine');
 const micBtn = $('micBtn'), stageBtn = $('stageBtn'), lockBtn = $('lockBtn'), stageExit = $('stageExit');
 const flash = $('flash'), flashWord = $('flashWord');
+const needleGroup = $('needleGroup');
+const hitWarn = $('hitWarn'), consistencyWarn = $('consistencyWarn');
 const pickerBtn = $('pickerBtn'), pickerLabel = $('pickerLabel'), pickerMenu = $('pickerMenu');
 const kitList = $('kitList'), kitNote = $('kitNote'), addForm = $('addForm'), formErr = $('formErr');
 
-const CX = 250, CY = 250, LUG_R = 196, BOLT_R = 15, GAUGE_R = 24, GAUGE_W = 5, GAUGE_MAX_DEV = 0.08;
+const CX = 250, CY = 250, LUG_R = 196, BOLT_R = 15, GAUGE_R = 24, GAUGE_W = 5;
 
 // Persistência
 function load(key, fallback){
@@ -400,10 +523,9 @@ function loadKit(){ const v = load(KIT_KEY, []); return Array.isArray(v) ? v : [
 function loadSettings(){
   const s = load(SETTINGS_KEY, {});
   tol = typeof s.tol === 'number' ? s.tol : 0.04;
-  sens = typeof s.sens === 'number' ? s.sens : 0.45;
   beep = !!s.beep; vib = !!s.vib;
 }
-function saveSettings(){ save(SETTINGS_KEY, { tol:tol, sens:sens, beep:beep, vib:vib }); }
+function saveSettings(){ save(SETTINGS_KEY, { tol:tol, beep:beep, vib:vib }); }
 
 const drum = ()=> kit.find(d => d.id === current);
 
@@ -566,10 +688,30 @@ function timeAgo(ts){
     function finish(){
       listening = false;
       if(readings.length < 3) return;  // leitura fraca: ignora em silêncio
+
+      // --- Regra 1: pico e duracao desta batida ---
+      const picoRms = energies.length ? Math.max.apply(null, energies) : 0;
+      const frameMs = energies.length ? (CAPTURE_MS / energies.length) : 0;
+      const acima = energies.filter(e => e > HIT_DURACAO_RMS).length;
+      const duracaoMs = Math.round(acima * frameMs);
+
+      // --- Regra 2: rejeitar fora de gama ---
+      if (picoRms < HIT_PICO_MIN){ showHitWarn('bate mais forte'); return; }
+      if (picoRms > HIT_PICO_MAX){ showHitWarn('bate mais leve'); return; }
+      if (duracaoMs >= HIT_DURACAO_MAX) return;  // som continuo: prato/PA, ignora
+
+      // --- Regra 4: calibracao na primeira batida boa ---
+      calibrate(picoRms);
+
       readings.sort((a,b)=>a-b);
       const cut = Math.floor(readings.length * 0.2);
       const core = readings.slice(cut, readings.length - cut);
       const med = core.reduce((s,v)=>s+v, 0) / core.length;
+
+      // --- Regra 3: consistencia entre batidas ---
+      if (target != null && !registerRead(target, med)) return;
+
+      hideHitWarn();
       process(med, target, estimateSustain(energies));
     }
     requestAnimationFrame(frame);
@@ -601,10 +743,7 @@ function timeAgo(ts){
         for(let i=0;i<bufLen;i++){ sum += peek[i]*peek[i]; }
         const rms = Math.sqrt(sum/bufLen);
 
-        const meter = $('sensMeter');
-        if(meter) meter.style.width = Math.min(100, Math.round(rms * 900)) + '%';
-
-        const thresh = ONSET_RMS * (1.6 - sens);
+        const thresh = onsetRms;
         if(armed() && !listening && rms > thresh && (performance.now() - lastHit) > REFRACTORY_MS){
           lastHit = performance.now();
           autoCapture();
@@ -702,6 +841,77 @@ function timeAgo(ts){
     return best;
   }
 
+  // ---------- Ponteiro de volta ----------
+  // dev = desvio relativo. Negativo = grave (apertar, esquerda).
+  // Positivo = agudo (afrouxar, direita). null = idle ao centro e neutro.
+  function updateNeedle(dev){
+    if (dev == null || !isFinite(dev)){
+      needleGroup.classList.add('idle');
+      needleGroup.setAttribute('transform', 'rotate(0 ' + NEEDLE_PIVOT + ')');
+      return;
+    }
+    needleGroup.classList.remove('idle');
+    const clamped = Math.max(-1, Math.min(1, dev / GAUGE_MAX_DEV));
+    const angle = clamped * GAUGE_MAX_ANGLE;
+    needleGroup.setAttribute('transform', 'rotate(' + angle.toFixed(2) + ' ' + NEEDLE_PIVOT + ')');
+  }
+
+  // ---------- Avisos de batida rejeitada ----------
+  // Aparecem em baixo do ponteiro, pequenos e cinzentos, e somem sozinhos.
+  // Nunca bloqueiam a UI nem competem com o flash gigante.
+  let warnTimer = null;
+  function showHitWarn(msg){
+    hitWarn.textContent = msg;
+    hitWarn.classList.add('show');
+    if (warnTimer) clearTimeout(warnTimer);
+    warnTimer = setTimeout(()=>{
+      hitWarn.classList.remove('show');
+      hitWarn.textContent = '';
+    }, 1000);
+  }
+  function hideHitWarn(){
+    if (warnTimer) clearTimeout(warnTimer);
+    warnTimer = null;
+    hitWarn.classList.remove('show');
+    hitWarn.textContent = '';
+  }
+  function showConsistencyWarn(msg){
+    consistencyWarn.textContent = msg;
+    consistencyWarn.classList.add('show');
+  }
+  function hideConsistencyWarn(){
+    consistencyWarn.classList.remove('show');
+    consistencyWarn.textContent = '';
+  }
+
+  // ---------- Consistência entre batidas ----------
+  // Guarda as ultimas N leituras do parafuso. Se variarem mais de
+  // CONSISTENCY_DEV, a batida nao entra na media (forca instavel).
+  function registerRead(lug, freq){
+    const list = recentReads[lug] || (recentReads[lug] = []);
+    list.push(freq);
+    if (list.length > CONSISTENCY_N) list.shift();
+    if (list.length < CONSISTENCY_N) return true;
+    const min = Math.min.apply(null, list), max = Math.max.apply(null, list);
+    const spread = (max - min) / (max || 1);
+    if (spread > CONSISTENCY_DEV){
+      showConsistencyWarn('bate sempre com a mesma força');
+      return false;   // nao atualiza a media do parafuso
+    }
+    hideConsistencyWarn();
+    return true;
+  }
+
+  // ---------- Calibração automática ----------
+  // Na primeira batida boa da sessao, o limiar passa a 60% do pico medido.
+  // Assim a app adapta-se sozinha ao microfone do telemóvel.
+  function calibrate(picoRms){
+    if (calibrated) return;
+    if (!(picoRms > 0)) return;
+    onsetRms = Math.max(0.005, picoRms * 0.6);
+    calibrated = true;
+  }
+
   // ---------- Leitura gigante ----------
   function setBig(word, color, hz){
     bigWord.textContent = word;
@@ -775,6 +985,7 @@ function timeAgo(ts){
     setVsMedia();
     paintLugs();
     doFlash(word, color);
+    updateNeedle(dev);        // ponteiro: posicao continua, fica sempre la
     feedback();
     lockBtn.hidden = !(refHz != null);
 
@@ -888,6 +1099,10 @@ function timeAgo(ts){
     updatePickerLabel();
     buildDrum();
     selectLug(0);
+    updateNeedle(null);      // ponteiro ao centro, cinzento
+    recentReads = {};        // consistencia reiniciada por tambor
+    hideConsistencyWarn();
+    hideHitWarn();
     const d = drum();
     setBig(audioCtx ? 'BATEN' : 'LIGA O MICROFONE', audioCtx ? 'var(--brass)' : 'var(--muted)');
     vsMedia.textContent = '';
@@ -947,9 +1162,19 @@ function timeAgo(ts){
   });
 
   // ---------- Tela 3: Ajustes ----------
+  function sensKey(){ return load(SENS_KEY, 'media'); }
+  function applySensibility(v){
+    // 'baixa' | 'media' | 'alta' -> limiar de onset
+    if (!SENS_PRESETS[v]) v = 'media';
+    onsetRms = SENS_PRESETS[v];
+    // a calibracao automatica só corre uma vez por sessao
+    calibrated = false;
+  }
   function applySettings(){
     document.querySelectorAll('input[name=tol]').forEach(r=>{ r.checked = Math.abs(parseFloat(r.value) - tol) < 1e-9; });
-    $('sensRange').value = Math.round(sens * 100);
+    const sk = sensKey();
+    document.querySelectorAll('input[name=sens]').forEach(r=>{ r.checked = r.value === sk; });
+    applySensibility(sk);
     $('beepSw').classList.toggle('on', beep);
     $('beepSw').setAttribute('aria-checked', String(beep));
     $('vibSw').classList.toggle('on', vib);
@@ -958,7 +1183,12 @@ function timeAgo(ts){
   document.querySelectorAll('input[name=tol]').forEach(r=>{
     r.addEventListener('change', ()=>{ tol = parseFloat(r.value); saveSettings(); paintLugs(); });
   });
-  $('sensRange').addEventListener('input', (e)=>{ sens = (+e.target.value)/100; saveSettings(); });
+  document.querySelectorAll('input[name=sens]').forEach(r=>{
+    r.addEventListener('change', ()=>{
+      save(SENS_KEY, r.value);
+      applySensibility(r.value);
+    });
+  });
   $('beepSw').addEventListener('click', ()=>{ beep = !beep; applySettings(); saveSettings(); });
   $('vibSw').addEventListener('click', ()=>{ vib = !vib; applySettings(); saveSettings(); });
 
@@ -1027,6 +1257,7 @@ function timeAgo(ts){
 
   measurements = new Array(lugCount).fill(null);
   buildDrum();
+  updateNeedle(null);   // ponteiro ao centro, cinzento, ate haver leitura
   if(kit.length) selectDrum(kit[0].id);
   else {
     updatePickerLabel();
