@@ -932,6 +932,77 @@
   .preset-list.managing .preset-row .menu-wrap{ display: none; }
   .preset-list.managing .preset-row .quick-del-btn{ display: flex; }
 
+  /* Edição inline do preset dentro da própria linha */
+  .preset-row.editing{ flex-wrap: wrap; align-items: flex-start; }
+  .preset-row .preset-edit{
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .preset-row .pe-field{
+    flex: 1 1 110px;
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--cream);
+    font-family:'Inter', sans-serif;
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: normal;
+    padding: 9px 11px;
+    border-radius: 8px;
+  }
+  .preset-row .pe-field:focus{
+    outline: none;
+    border-color: var(--brass);
+  }
+  .preset-row .pe-hz{ flex: 0 1 92px; }
+  .preset-row .pe-actions{
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+  .preset-row .pe-save,
+  .preset-row .pe-cancel{
+    font-family:'Oswald', sans-serif;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 9px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .preset-row .pe-save{
+    background: var(--brass);
+    border: 1px solid var(--brass);
+    color: #0e1512;
+  }
+  .preset-row .pe-cancel{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--cream);
+  }
+  .preset-row .pe-save:hover{ background: var(--brass-dim); border-color: var(--brass-dim); }
+  .preset-row .pe-warn{
+    flex: 1 1 100%;
+    display: none;
+    color: var(--tight);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .preset-row .pe-warn.show{ display: block; }
+  /* Em modo de edição só o formulário fica visível */
+  .preset-row.editing .preset-icon,
+  .preset-row.editing .preset-info,
+  .preset-row.editing .preset-actions{ display: none; }
+
   .preset-empty{
     font-size: 12.5px;
     color: var(--muted);
@@ -1561,7 +1632,19 @@
   // ---------- Microfone ----------
 
   micBtn.addEventListener('click', async ()=>{
-    if (audioCtx) return;
+    // Já está ligado? Então este toque é para desligar.
+    if (audioCtx){
+      if (micStream){ micStream.getTracks().forEach(t=>t.stop()); }
+      try { await audioCtx.close(); } catch(e){ /* já estava fechado */ }
+      audioCtx = null;
+      analyser = null;
+      micStream = null;
+      micBtn.textContent = 'Ativar microfone';
+      micBtn.classList.remove('on');
+      setStatus('Microfone desligado', 'toque para ativar de novo', false);
+      captureBtn.disabled = true;
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
       setStatus('Navegador sem suporte a microfone', 'tente abrir esta página no Chrome ou Safari atualizados', false);
       return;
@@ -1824,6 +1907,8 @@
     requestAnimationFrame(frame);
   }
 
+  let loopActive = true;
+
   function monitorLoop(){
     if (audioCtx && analyser){
       try{
@@ -1842,9 +1927,17 @@
         }
       } catch(err){ /* ignora frame com erro pontual, a escuta continua no próximo */ }
     }
-    requestAnimationFrame(monitorLoop);
+    if (loopActive) requestAnimationFrame(monitorLoop);
   }
   requestAnimationFrame(monitorLoop);
+
+  // Com a aba escondida o requestAnimationFrame deixa de disparar, mas o loop
+  // continuava a se reagendar e a manter trabalho aceso. Pausamos no
+  // visibilitychange e retomamos exactamente uma vez quando a aba volta.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { loopActive = false; }
+    else if (!loopActive) { loopActive = true; requestAnimationFrame(monitorLoop); }
+  });
 
   // Autocorrelação restrita à janela de frequência útil do modo atual.
   // Calcular a correlação só entre MIN_LAG e MAX_LAG em vez de varrer o buffer
@@ -2095,21 +2188,7 @@
       editBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
         closeAllMenus();
-        const newName = prompt('Nome do tambor', p.name);
-        if (newName === null) return;
-        const newSize = prompt('Tamanho (polegadas)', p.size || '');
-        if (newSize === null) return;
-        const newHzRaw = prompt('Frequência (Hz)', Math.round(p.hz));
-        if (newHzRaw === null) return;
-        const newHz = parseFloat(newHzRaw);
-        const updated = loadPresets();
-        updated[idx] = {
-          name: newName.trim() || p.name,
-          size: newSize.trim(),
-          hz: freqInRange(newHz) ? newHz : p.hz
-        };
-        savePresets(updated);
-        renderPresets();
+        openInlineEdit(row, p, idx);
       });
 
       const delBtn = document.createElement('button');
@@ -2158,6 +2237,87 @@
     });
 
     renderQuickPresets();
+  }
+
+  // Abre o formulário de edição dentro da própria linha do preset.
+  // Substitui os prompt() em série, que bloqueiam a interface e são pennedos
+  // de usar em telemóvel.
+  function openInlineEdit(row, p, idx){
+    if (row.classList.contains('editing')) return;
+
+    const form = document.createElement('div');
+    form.className = 'preset-edit';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'pe-field';
+    nameInput.value = p.name || '';
+    nameInput.placeholder = 'Nome';
+
+    const sizeInput = document.createElement('input');
+    sizeInput.type = 'text';
+    sizeInput.className = 'pe-field';
+    sizeInput.value = p.size || '';
+    sizeInput.placeholder = 'pol.';
+
+    const hzInput = document.createElement('input');
+    hzInput.type = 'number';
+    hzInput.className = 'pe-field pe-hz';
+    hzInput.value = Math.round(p.hz);
+    hzInput.inputMode = 'decimal';
+
+    const warn = document.createElement('div');
+    warn.className = 'pe-warn';
+
+    const actions = document.createElement('div');
+    actions.className = 'pe-actions';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'pe-save';
+    saveBtn.textContent = 'Guardar';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'pe-cancel';
+    cancelBtn.textContent = 'Cancelar';
+
+    form.appendChild(nameInput);
+    form.appendChild(sizeInput);
+    form.appendChild(hzInput);
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+    form.appendChild(warn);
+    row.appendChild(form);
+    row.classList.add('editing');
+
+    // Cancelar (e fechar depois de gravar) não altera nada: o form some e a
+    // linha volta ao estado normal.
+    const close = ()=>{ form.remove(); row.classList.remove('editing'); };
+    cancelBtn.addEventListener('click', (e)=>{ e.stopPropagation(); close(); });
+
+    saveBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const newHz = parseFloat(hzInput.value);
+      if (!freqInRange(newHz)){
+        const r = freqRange();
+        warn.textContent = 'Frequência fora da faixa do modo ' + (mode === 'center' ? 'Centro' : 'Borda') + ' (' + r[0] + '–' + r[1] + ' Hz). Nada foi gravado.';
+        warn.classList.add('show');
+        return;
+      }
+      const updated = loadPresets();
+      if (!updated[idx]){ close(); return; }
+      updated[idx] = {
+        name: nameInput.value.trim() || p.name,
+        size: sizeInput.value.trim(),
+        hz: newHz
+      };
+      savePresets(updated);
+      renderPresets();
+    });
+
+    nameInput.focus();
   }
 
   function closeAllMenus(){
