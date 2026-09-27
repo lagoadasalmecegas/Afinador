@@ -1160,6 +1160,42 @@
   let mode = 'edge'; // 'edge' (parafuso a parafuso) ou 'center' (nota fundamental)
   let centerReferenceHz = null;
 
+  // ---------- Gamas de frequência por modo ----------
+  // Borda: batida seca nos parafusos, tom mais agudo e decaimento curto.
+  // Centro: a pele inteira ressoa e devolve a fundamental, bem mais grave.
+  const EDGE_MIN_HZ = 80,   EDGE_MAX_HZ = 800;
+  const CENTER_MIN_HZ = 40, CENTER_MAX_HZ = 400;
+
+  // Tempos de captura. O ataque de um tambor tem muito transiente nos primeiros
+  // milissegundos, por isso esperamos SETTLE_MS antes de olhar para o sinal.
+  const SETTLE_MS = 80;
+  const CAPTURE_MS = 150;
+
+  function freqRange(){
+    return mode === 'center' ? [CENTER_MIN_HZ, CENTER_MAX_HZ] : [EDGE_MIN_HZ, EDGE_MAX_HZ];
+  }
+
+  function freqInRange(f){
+    if (!Number.isFinite(f)) return false;
+    const r = freqRange();
+    return f >= r[0] && f <= r[1];
+  }
+
+  // Referências de tambor em Hz. batter = tom na borda, perto dos parafusos.
+  // reso = ressonância da pele inteira. Ainda não estão ligadas à UI.
+  const DRUM_PRESETS = {
+    '8_tom':    { label: 'Tom 8"',    batter: [260, 330], reso: [310, 390] },
+    '10_tom':   { label: 'Tom 10"',   batter: [200, 260], reso: [240, 310] },
+    '12_tom':   { label: 'Tom 12"',   batter: [150, 200], reso: [180, 240] },
+    '13_tom':   { label: 'Tom 13"',   batter: [130, 170], reso: [155, 200] },
+    '14_tom':   { label: 'Tom 14"',   batter: [110, 150], reso: [130, 180] },
+    '16_floor': { label: 'Floor 16"', batter: [80, 110],  reso: [95, 130] },
+    '18_floor': { label: 'Floor 18"', batter: [65, 90],   reso: [78, 108] },
+    '22_kick':  { label: 'Kick 22"',  batter: [50, 75],   reso: [60, 90] },
+    '24_kick':  { label: 'Kick 24"',  batter: [45, 65],   reso: [55, 78] },
+    '14_snare': { label: 'Caixa 14"', batter: [180, 280], reso: [350, 500] }
+  };
+
   function updateCurrentFreqDisplay(){
     const activeHz = mode === 'center' ? centerReferenceHz : referenceHz;
     if (activeHz == null){
@@ -1537,9 +1573,15 @@
         try { await audioCtx.resume(); } catch(e){ /* alguns navegadores só liberam no próximo toque do usuário */ }
       }
       const source = audioCtx.createMediaStreamSource(micStream);
+
+      // Filtro passa-baixo: tira o chiado e o retorno das caixas de som para não
+      // poluir a autocorrelação. Q baixo para o corte não criar ressonância
+      // própria que o próprio filtro introduziria no sinal.
+      const lowpass = audioCtx.createBiquadFilter(); lowpass.type='lowpass'; lowpass.frequency.value=1200; lowpass.Q.value=0.7;
+
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
-      source.connect(analyser);
+      source.connect(lowpass); lowpass.connect(analyser);
 
       micBtn.textContent = 'Microfone ativo';
       micBtn.classList.add('on');
@@ -1588,6 +1630,13 @@
     }
 
     measurements[capturedLug] = freq;
+
+    // Afinação relativa: a referência deixa de ser o 1º parafuso e passa a ser a
+    // média de todos os já medidos, para a leitura não derivar sempre para o
+    // mesmo lado conforme o aro vai cedendo.
+    const vals = measurements.filter(v => v != null);
+    if (vals.length >= 2){ referenceHz = vals.reduce((s,v)=>s+v,0)/vals.length; }
+
     flashLug(capturedLug);
 
     if (referenceHz == null){
@@ -1662,7 +1711,7 @@
     let best = null;
     let bestRms = 0;
     const start = performance.now();
-    const DURATION = 1100;
+    const DURATION = SETTLE_MS + CAPTURE_MS;
     const capturedLug = selectedLug;
     const capturedMode = mode;
 
@@ -1697,7 +1746,7 @@
           return;
         }
         const freq = autoCorrelate(best, audioCtx.sampleRate);
-        if (!Number.isFinite(freq) || freq < 40 || freq > 2000){
+        if (!freqInRange(freq)){
           setStatus('Som pouco claro, tente de novo', 'evite ruído de fundo ao bater', false);
           return;
         }
@@ -1728,15 +1777,20 @@
     const bufLen = analyser.fftSize;
     const sample = new Float32Array(bufLen);
     const readings = [];
-    const start = performance.now();
-    const WINDOW_MS = 340;
+    const t0 = performance.now();
+    // Espera o transiente do ataque passar antes de medir
+    const settleUntil = t0 + SETTLE_MS;
+    const captureUntil = t0 + SETTLE_MS + CAPTURE_MS;
 
     function frame(){
       try{
-        analyser.getFloatTimeDomainData(sample);
-        const f = autoCorrelate(sample, audioCtx.sampleRate);
-        if (Number.isFinite(f) && f >= 40 && f <= 2000) readings.push(f);
-        if (performance.now() - start < WINDOW_MS){
+        const now = performance.now();
+        if (now >= settleUntil){
+          analyser.getFloatTimeDomainData(sample);
+          const f = autoCorrelate(sample, audioCtx.sampleRate);
+          if (freqInRange(f)) readings.push(f);
+        }
+        if (now < captureUntil){
           requestAnimationFrame(frame);
         } else {
           finish();
@@ -1756,8 +1810,12 @@
           return;
         }
         readings.sort((a,b)=>a-b);
-        const median = readings[Math.floor(readings.length/2)];
-        processFrequency(median, capturedLug, capturedMode);
+        // Média aparada: descarta 20% de cada extremo antes de fazer a média,
+        // assim um frame ruim não puxa a leitura.
+        const cut = Math.floor(readings.length * 0.2);
+        const core = readings.slice(cut, readings.length - cut);
+        const mean = core.reduce((s,v)=>s+v, 0) / core.length;
+        processFrequency(mean, capturedLug, capturedMode);
       } catch(err){
         setStatus('Algo deu errado na leitura automática', 'pode tentar de novo', false);
       }
@@ -1788,10 +1846,16 @@
   }
   requestAnimationFrame(monitorLoop);
 
-  // Autocorrelação para estimar a frequência fundamental de uma batida
+  // Autocorrelação restrita à janela de frequência útil do modo atual.
+  // Calcular a correlação só entre MIN_LAG e MAX_LAG em vez de varrer o buffer
+  // inteiro tira a maior parte do custo O(n²) e ainda descarta os picos
+  // espúrios que aparecem em lags muito curtos.
   function autoCorrelate(buf, sampleRate){
     const SIZE = buf.length;
+    const r = freqRange();
+    const loHz = r[0], hiHz = r[1];
 
+    // Corta o silêncio das pontas (mesma lógica de antes)
     let r1 = 0, r2 = SIZE - 1;
     const thres = 0.2;
     for (let i=0;i<SIZE/2;i++){ if (Math.abs(buf[i]) < thres){ r1 = i; break; } }
@@ -1800,29 +1864,33 @@
     const n = trimmed.length;
     if (n < 8) return -1;
 
+    // Só interessam os lags que podem conter a fundamental do modo atual
+    const MIN_LAG = Math.max(1, Math.floor(sampleRate / hiHz));
+    const MAX_LAG = Math.min(n - 2, Math.ceil(sampleRate / loHz));
+    if (MAX_LAG <= MIN_LAG) return -1;
+
     const c = new Float32Array(n);
-    for (let lag=0; lag<n; lag++){
+    for (let lag=MIN_LAG; lag<=MAX_LAG; lag++){
       let sum = 0;
       for (let j=0; j<n-lag; j++){ sum += trimmed[j]*trimmed[j+lag]; }
       c[lag] = sum;
     }
 
-    let d = 0;
-    while (d < n-1 && c[d] > c[d+1]) d++;
-
-    let maxVal = -1, maxPos = -1;
-    for (let i=d; i<n; i++){
-      if (c[i] > maxVal){ maxVal = c[i]; maxPos = i; }
+    // Pico global dentro da janela
+    let maxVal = -1, maxIdx = -1;
+    for (let i=MIN_LAG; i<=MAX_LAG; i++){
+      if (c[i] > maxVal){ maxVal = c[i]; maxIdx = i; }
     }
-    if (maxPos <= 0) return -1;
+    if (maxIdx === -1) return -1;
+    // Pico colado na borda da janela: leitura não confiável
+    if (maxIdx === MIN_LAG || maxIdx === MAX_LAG) return -1;
 
-    const x1 = c[maxPos-1] ?? c[maxPos];
-    const x2 = c[maxPos];
-    const x3 = c[maxPos+1] ?? c[maxPos];
+    // Interpolação parabólica com os 3 pontos à volta do pico
+    const x1 = c[maxIdx-1], x2 = c[maxIdx], x3 = c[maxIdx+1];
     const a = (x1 + x3 - 2*x2) / 2;
     const b = (x3 - x1) / 2;
-    let refinedPos = maxPos;
-    if (a) refinedPos = maxPos - b/(2*a);
+    let refinedPos = maxIdx;
+    if (a) refinedPos = maxIdx - b/(2*a);
     if (!refinedPos || !sampleRate) return -1;
 
     return sampleRate / refinedPos;
@@ -2038,7 +2106,7 @@
         updated[idx] = {
           name: newName.trim() || p.name,
           size: newSize.trim(),
-          hz: Number.isFinite(newHz) && newHz >= 40 && newHz <= 2000 ? newHz : p.hz
+          hz: freqInRange(newHz) ? newHz : p.hz
         };
         savePresets(updated);
         renderPresets();
