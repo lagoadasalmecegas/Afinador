@@ -445,6 +445,21 @@
   .kit-profile .kp-sub{ display:block; font-family:'Inter', sans-serif; font-size:11.5px; font-weight:400; color:var(--muted); margin-top:3px; text-transform:none; letter-spacing:normal; }
 
   .add-drum{ width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--cream); border-radius:12px; padding:14px; font-size:13.5px; font-weight:700; margin:6px 0 10px; }
+
+  /* ---- Bloco "Adicionar tambor" da tela de Kit ----
+     Sem digitacao: primeiro o tipo, depois a medida. Um toque na medida cria
+     o tambor no kit e abre a tela de Afinar. Reaproveita as classes do
+     seletor da tela de Afinar, por isso o bloco fica igual em lado nenhum. */
+  .add-title{
+    font-family:'Oswald', sans-serif; font-size:15px; font-weight:600;
+    letter-spacing:0.04em; color:var(--muted); margin:14px 0 6px;
+  }
+  #addForm .dp-types{ margin-bottom:7px; }
+  /* A medida que ja esta no kit so leva borda dourada: sem texto "no kit"
+     e sem mudar a cor do numero, para o olho ir depressa ao que falta. */
+  #addForm .dp-size.saved .in{ color:var(--cream); }
+  #addForm .dp-size.saved .un{ color:var(--muted); }
+  #addForm .form-actions{ margin-top:10px; }
   .wipe{ width:100%; background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:12px; padding:12px; font-size:12px; font-weight:600; }
   .empty{ text-align:center; color:var(--muted); font-size:13px; padding:26px 10px; line-height:1.5; }
 
@@ -705,6 +720,8 @@
     <div class="screen-pad">
       <div class="screen-h">Meu kit</div>
 
+      <div id="kitList"></div>
+
       <div class="style-bar">
         <div class="picker">
           <button class="picker-btn" id="kitStyleBtn"><span id="kitStyleLabel">Roots</span> <span class="caret">▾</span></button>
@@ -721,53 +738,17 @@
       <button class="kit-profile" id="newKitBtn">+ Novo kit<span class="kp-sub">Escolhe um perfil pronto</span></button>
       <div class="picker-menu open" id="kitProfiles" style="position:static;display:none;margin-bottom:12px"></div>
 
-      <div id="kitList"></div>
-
-      <div class="form-card" id="addForm">
-        <div class="field">
-          <label for="fName">Nome</label>
-          <input type="text" id="fName" placeholder="Ex.: Tom 8">
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label for="fType">Tipo</label>
-            <select id="fType">
-              <option value="tom">Tom</option>
-              <option value="surdo">Surdo</option>
-              <option value="bumbo">Bumbo</option>
-              <option value="caixa">Caixa</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="fSize">Tamanho</label>
-            <select id="fSize"></select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label for="fHead">Pele de cima</label>
-            <select id="fHead">
-              <option value="">Genérica</option>
-              <option>Remo</option><option>Evans</option><option>Aquarian</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="fReso">Pele de baixo</label>
-            <select id="fReso">
-              <option value="">Genérica</option>
-              <option>Remo</option><option>Evans</option><option>Aquarian</option>
-            </select>
-          </div>
-        </div>
+      <div class="add-title">Adicionar tambor</div>
+      <div class="form-card open" id="addForm">
+        <div class="dp-types" id="ktTypes"></div>
+        <div class="dp-sizes" id="ktSizes"></div>
         <p class="form-suggest" id="formSuggest"></p>
-        <div class="form-err" id="formErr"></div>
         <div class="form-actions">
           <button class="btn-ghost" id="formCancel" type="button">Cancelar</button>
-          <button class="btn-primary" id="formSave" type="button">Guardar no kit</button>
         </div>
       </div>
 
-      <button class="add-drum" id="addDrumBtn">+ Adicionar tambor</button>
+      <button class="add-drum" id="addDrumBtn" style="display:none">+ Adicionar tambor</button>
       <button class="wipe" id="wipeBtn">Apagar tudo</button>
     </div>
   </section>
@@ -1061,7 +1042,8 @@ const SIZE_RANGES = {
   '12':[150,200],  // tom 12 / surdo 12 / caixa 12
   '13':[130,170],  // tom 13 / caixa 13
   '14':[110,150],  // caixa 14 / surdo 14
-  '16':[80,110],   // surdo 16
+  '16':[80,110],   // surdo 16 / floor 16
+  '18':[68,90],    // surdo 18 / floor 18
 };
 const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
 
@@ -1101,7 +1083,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
   const styleBtn = $('styleBtn'), styleLabel = $('styleLabel'), styleMenu = $('styleMenu');
   const skinToggle = $('skinToggle');
   const kitList = $('kitList'), soundRef = $('soundRef'), addForm = $('addForm');
-  const formErr = $('formErr'), formSuggest = $('formSuggest');
+  const formSuggest = $('formSuggest');
   const kitStyleLabel = $('kitStyleLabel'), kitStyleMenu = $('kitStyleMenu'), kitProfiles = $('kitProfiles');
   const targetLine = $('targetLine');
   const noteTargetLabel = $('noteTargetLabel'), noteTargetMenu = $('noteTargetMenu');
@@ -1120,10 +1102,11 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     surdo: ['12','14','16'],
     bumbo: ['16','18','20','22'],
     caixa: ['10','12','13','14'],
+    floor: ['14','16','18'],
   };
-  const TYPE_LABEL = { tom:'Tom', surdo:'Surdo', bumbo:'Bumbo', caixa:'Caixa' };
+  const TYPE_LABEL = { tom:'Tom', surdo:'Surdo', bumbo:'Bumbo', caixa:'Caixa', floor:'Floor' };
   // Ordem em que os tipos aparecem no seletor: de cima para baixo na bateria.
-  const TYPE_ORDER = ['tom','surdo','bumbo','caixa'];
+  const TYPE_ORDER = ['tom','surdo','bumbo','caixa','floor'];
 
   // ---------- Persistência ----------
   function load(key, fallback){
@@ -1936,7 +1919,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     if(!kit.length){
       const e = document.createElement('div');
       e.className = 'empty';
-      e.textContent = 'Kit vazio. Escolhe um perfil acima ou adiciona um tambor.';
+      e.textContent = 'Sem tambores. Escolhe tipo e tamanho em cima.';
       kitList.appendChild(e);
       return;
     }
@@ -2076,7 +2059,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     let list;
     if(key === 'dub') list = DUB_SMALL;
     else if(key === 'reggae') list = REGGAE_KIT;
-    else if(key === 'pessoal'){ go('kit'); $('addDrumBtn').click(); return; }
+    else if(key === 'pessoal'){ go('kit'); openAddForm(); return; }
     else list = KITS[key].drums;
     kit = list.map(d => ({
       id:'d' + Math.random().toString(36).slice(2,9),
@@ -2093,6 +2076,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     save(KIT_KEY, kit);
     kitProfiles.style.display = 'none';
     renderKit();
+    renderKitAdd();
     renderIntervals();
     if(kit.length) selectDrum(kit[0].id);
   }
@@ -2105,6 +2089,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     styleLabel.textContent = v;
     kitStyleLabel.textContent = v;
     soundRef.innerHTML = SOUND_REFS[v] || '';
+    renderKitAdd();
   }
 
   function fillStyleMenu(menu){
@@ -2385,33 +2370,70 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     $('saveKitMsg').textContent = 'Kit guardado com as notas e sustains.';
   });
 
-  // ---------- Formulário ----------
-  function fillSizes(){
-    const sel = $('fSize');
-    const list = SIZES[$('fType').value] || SIZES.tom;
-    sel.innerHTML = '';
-    list.forEach(s=>{
-      const o = document.createElement('option');
-      o.value = s; o.textContent = s + '"';
-      sel.appendChild(o);
+  // ---------- Adicionar tambor (sem digitar) ----------
+  // Escolhe o tipo, toca na medida e o tambor entra no kit com a afinacao
+  // sugerida pelo estilo activo, ja seleccionado na tela de Afinar.
+  let addType = 'tom';
+
+  function renderKitAdd(){
+    const tBox = $('ktTypes'), sBox = $('ktSizes');
+    if(!tBox || !sBox) return;
+
+    tBox.innerHTML = '';
+    TYPE_ORDER.forEach((tp)=>{
+      const b = document.createElement('button');
+      b.className = 'dp-type' + (tp === addType ? ' on' : '');
+      b.type = 'button';
+      b.textContent = TYPE_LABEL[tp];
+      b.addEventListener('click', ()=>{ addType = tp; renderKitAdd(); });
+      tBox.appendChild(b);
     });
+
+    sBox.innerHTML = '';
+    (SIZES[addType] || []).forEach((sz)=>{
+      const saved = !!findDrum(addType, sz);
+      const b = document.createElement('button');
+      b.className = 'dp-size' + (saved ? ' saved' : '');
+      b.type = 'button';
+      const n = document.createElement('span');
+      n.className = 'in';
+      n.textContent = sz;
+      const u = document.createElement('span');
+      u.className = 'un';
+      u.textContent = 'polegadas';
+      b.appendChild(n); b.appendChild(u);
+      // Um toque: cria a peca se ainda nao existe, guarda-a e vai afinar.
+      b.addEventListener('click', ()=>{
+        const d = ensureDrum(addType, sz);
+        renderKit();
+        renderKitAdd();
+        if(d) selectDrum(d.id);
+      });
+      sBox.appendChild(b);
+    });
+
     updateSuggest();
   }
 
-  // Ao escolher tipo/tamanho, sugere nota e Hz conforme o estilo activo.
+  // Sugestao de afinacao do estilo activo para as medidas deste tipo.
   function updateSuggest(){
-    const sug = suggestFor($('fType').value, $('fSize').value);
-    if(!sug){ formSuggest.textContent = ''; return; }
-    if(sug.fixed){
-      const b = hzToNote(sug.batterHz), r = hzToNote(sug.resoHz);
-      formSuggest.textContent = 'Sugestão ' + styleName + ': cima ' + (b ? b.name : '?') + ' (' + sug.batterHz + ' Hz) · baixo ' + (r ? r.name : '?') + ' (' + sug.resoHz + ' Hz)';
-    } else {
-      formSuggest.textContent = 'Gama ' + styleName + ': ' + sug.min + '–' + sug.max + ' Hz (afina à tua maneira)';
-    }
+    const parts = (SIZES[addType] || []).map((sz)=>{
+      const sug = suggestFor(addType, sz);
+      if(!sug) return null;
+      if(sug.fixed){
+        const b = hzToNote(sug.batterHz);
+        return sz + '" ' + (b ? b.name : '?') + ' · ' + sug.batterHz + ' Hz';
+      }
+      return sz + '" ' + sug.min + '–' + sug.max + ' Hz';
+    }).filter(Boolean);
+    formSuggest.textContent = parts.length ? 'Sugestão ' + styleName + ': ' + parts.join('  ·  ') : '';
   }
 
-  $('fType').addEventListener('change', fillSizes);
-  $('fSize').addEventListener('change', updateSuggest);
+  function openAddForm(){
+    addForm.classList.add('open');
+    $('addDrumBtn').style.display = 'none';
+    renderKitAdd();
+  }
 
   $('newKitBtn').addEventListener('click', ()=>{
     const open = kitProfiles.style.display !== 'none';
@@ -2438,35 +2460,14 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
   });
 
   $('addDrumBtn').addEventListener('click', ()=>{
-    const open = addForm.classList.toggle('open');
-    $('addDrumBtn').style.display = open ? 'none' : '';
-    if(open){ fillSizes(); $('fName').focus(); }
+    if(addForm.classList.contains('open')){
+      addForm.classList.remove('open');
+      $('addDrumBtn').style.display = '';
+      return;
+    }
+    openAddForm();
   });
   $('formCancel').addEventListener('click', ()=>{
-    addForm.classList.remove('open');
-    $('addDrumBtn').style.display = '';
-    formErr.textContent = '';
-  });
-  $('formSave').addEventListener('click', ()=>{
-    const name = $('fName').value.trim();
-    if(!name){ formErr.textContent = 'Dá um nome ao tambor.'; return; }
-    const type = $('fType').value, size = $('fSize').value;
-    const sug = suggestFor(type, size);
-    kit.push({
-      id:'d' + Math.random().toString(36).slice(2,9),
-      name:name, type:type, size:size,
-      head:$('fHead').value, reso:$('fReso').value,
-      batterNote: (sug && sug.fixed && hzToNote(sug.batterHz)) ? hzToNote(sug.batterHz).name : null,
-      batterHz: (sug && sug.fixed) ? sug.batterHz : null,
-      resoNote: (sug && sug.fixed && hzToNote(sug.resoHz)) ? hzToNote(sug.resoHz).name : null,
-      resoHz: (sug && sug.fixed) ? sug.resoHz : null,
-      lastTunedAt:null, sustain:{}, sustainWarn:false
-    });
-    save(KIT_KEY, kit);
-    renderKit();
-    $('fName').value = '';
-    formErr.textContent = '';
-    formSuggest.textContent = '';
     addForm.classList.remove('open');
     $('addDrumBtn').style.display = '';
   });
@@ -2476,6 +2477,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     kit = [];
     save(KIT_KEY, kit);
     renderKit();
+    renderKitAdd();
     selectDrum(null);
   });
 
@@ -2704,7 +2706,7 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
   setStyle(styleName);
   fillStyleMenu(styleMenu);
   fillStyleMenu(kitStyleMenu);
-  fillSizes();
+  renderKitAdd();
   renderKit();
   renderDrumPick();
   buildPiano();
