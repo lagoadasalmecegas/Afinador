@@ -980,6 +980,9 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   let calibrated = false;
   let recentReads = {};
   let tol = 0.04, beep = false, vib = false;
+  // Toggles dos Ajustes. Têm de existir ANTES de applySettings() e de
+  // playNote(), senão o arranque rebenta e o teclado nunca é desenhado.
+  let tocarNotas = false, afinarPorNota = true;
   let audioCtx = null, analyser = null, micStream = null, listening = false, loopActive = true;
   let lugCount = 8;
 
