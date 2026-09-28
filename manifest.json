@@ -1,0 +1,57 @@
+{
+  "name": "Afinador do Mestre Lion",
+  "short_name": "Mestre Lion",
+  "description": "Afinador de bateria para palco ao vivo. Reggae roots, moderno e dub.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b120c",
+  "theme_color": "#ffc72c",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "logos/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "logos/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "logos/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Afinar",
+      "short_name": "Afinar",
+      "url": "/?screen=afinar",
+      "icons": [{ "src": "logos/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Notas",
+      "short_name": "Notas",
+      "url": "/?screen=notas",
+      "icons": [{ "src": "logos/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Meu Kit",
+      "short_name": "Kit",
+      "url": "/?screen=kit",
+      "icons": [{ "src": "logos/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Ajustes",
+      "short_name": "Ajustes",
+      "url": "/?screen=ajustes",
+      "icons": [{ "src": "logos/logo-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

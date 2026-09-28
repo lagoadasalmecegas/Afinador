@@ -530,6 +530,14 @@
   .about a{ color:var(--brass); }
 
 </style>
+
+<!-- PWA: instala no telemóvel como app -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffc72c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mestre Lion">
+<link rel="apple-touch-icon" href="logos/logo-192.png">
 </head>
 <body>
 <div class="app">
@@ -2422,6 +2430,19 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     const b = e.target.closest('button');
     if(b) go(b.getAttribute('data-screen'));
   });
+
+  // ---------- Atalhos PWA: ?screen=... ----------
+  // Abre direto na aba pedida (usado pelos atalhos do manifest.json).
+  // As abas reais sao afinar / kit / notas / ajustes.
+  // "parafusos" e aceite como alias de "notas" (nome antigo do atalho).
+  (function initialScreen(){
+    let want = null;
+    try { want = new URLSearchParams(location.search).get('screen'); } catch(e){ return; }
+    if (!want) return;
+    if (want === 'parafusos') want = 'notas';
+    const btn = bottomNav.querySelector('button[data-screen="' + want + '"]');
+    if (btn) go(want);
+  })();
 
   // ---------- Abertura (splash) ----------
   // Mostra o logo completo e some sozinho em 3s ou ao tocar.
