@@ -280,20 +280,41 @@
   .kc-tune:active{ filter:brightness(0.9); }
 
   /* Preset em destaque no topo da tela de kit. */
-  .kit-fast{ margin-bottom:12px; }
-  .kit-fast-h{
-    font-size:11px; font-weight:700; letter-spacing:0.06em;
-    color:var(--marca-dourado); text-transform:uppercase; margin-bottom:6px;
+
+  /* Seletor de tambor na tela de afinacao: tipo + medida, sem sair do ecra.
+     E o caminho principal antes do show: escolher a peca e ja afinar. */
+  .drum-pick{ flex:0 0 auto; padding:0 14px 8px; }
+  .dp-types{ display:flex; gap:6px; }
+  .dp-type{
+    flex:1 1 0;
+    background:var(--panel); border:1px solid var(--line); border-radius:11px;
+    padding:9px 4px;
+    font-family:'Barlow Condensed', sans-serif;
+    font-size:15px; font-weight:800; line-height:1.1;
+    color:var(--muted);
   }
-  .kit-fast-row{ display:flex; gap:6px; }
-  .kit-fast-btn{
-    flex:1 1 0; background:var(--panel); border:1px solid var(--brass);
-    border-radius:11px; padding:9px 6px;
-    display:flex; flex-direction:column; align-items:center; gap:2px;
+  .dp-type.on{ background:var(--brass); border-color:var(--brass); color:#0e1512; }
+  .dp-sizes{
+    display:flex; gap:6px; margin-top:7px;
+    /* os botoes de medida sao grandes: o musician mira neles as vezes
+       sem olhar, com o tambor na mao */
   }
-  .kit-fast-btn:active{ background:var(--panel-2); }
-  .kit-fast-btn b{ font-size:12px; font-weight:800; color:var(--brass); }
-  .kit-fast-btn span{ font-size:10px; color:var(--muted); line-height:1.25; }
+  .dp-size{
+    flex:1 1 0; min-width:0;
+    background:var(--panel); border:2px solid var(--line); border-radius:12px;
+    padding:11px 2px;
+    display:flex; flex-direction:column; align-items:center; gap:0;
+  }
+  .dp-size .in{ font-family:'Barlow Condensed', sans-serif; font-size:21px; font-weight:800; line-height:1; }
+  .dp-size .un{ font-family:'Inter', sans-serif; font-size:9.5px; color:var(--muted); line-height:1.2; }
+  .dp-size.on{ border-color:var(--ok); background:var(--panel-2); }
+  .dp-size.on .in{ color:var(--ok); }
+  .dp-size:active{ background:var(--panel-2); }
+  /* tambor que ja esta no kit do musician */
+  .dp-size.saved{ border-color:var(--brass-dim); }
+  .dp-size.saved .in{ color:var(--marca-dourado); }
+  .dp-size.saved .un{ color:var(--brass-dim); }
+  .dp-size.saved.on{ border-color:var(--ok); }
 
   .bottom-row{ flex:0 0 auto; display:flex; gap:8px; padding:8px 12px calc(10px + env(safe-area-inset-bottom)); }
   .bottom-row button{ flex:1 1 0; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 6px; font-size:11px; font-weight:600; line-height:1.25; }
@@ -598,6 +619,11 @@
 
   <!-- TELA 1: AFINAR -->
   <section class="app-screen active" id="screen-afinar">
+    <div class="drum-pick" id="drumPick">
+      <div class="dp-types" id="dpTypes"></div>
+      <div class="dp-sizes" id="dpSizes"></div>
+    </div>
+
     <div class="top-controls">
       <div class="picker">
         <button class="picker-btn" id="pickerBtn" disabled>
@@ -692,11 +718,6 @@
         <button class="kit-profile" id="editNotesBtn">🎹 Editar intervalos</button>
       </div>
 
-      <div class="kit-fast">
-        <div class="kit-fast-h">Kits de bar</div>
-        <div class="kit-fast-row" id="kitFast"></div>
-      </div>
-
       <button class="kit-profile" id="newKitBtn">+ Novo kit<span class="kp-sub">Escolhe um perfil pronto</span></button>
       <div class="picker-menu open" id="kitProfiles" style="position:static;display:none;margin-bottom:12px"></div>
 
@@ -713,7 +734,6 @@
             <select id="fType">
               <option value="tom">Tom</option>
               <option value="surdo">Surdo</option>
-              <option value="floor">Floor</option>
               <option value="bumbo">Bumbo</option>
               <option value="caixa">Caixa</option>
             </select>
@@ -1031,9 +1051,19 @@ const SOUND_REFS = {
   Livre: '<b>Livre</b> — afina ao teu gosto. A app só sugere.'
 };
 
-// Gamas do estilo Moderno por tamanho (sem nota obrigatória).
-const MODERN_RANGES = { '8':[260,330], '10':[200,260], '12':[150,200], '14':[110,150], '16':[80,110] };
-const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
+// Gamas por tamanho em polegadas. Serve para sugerir a afinação quando o
+// tambor ainda não tem nota definida (estilo Moderno / Livre).
+// Quanto maior a peça, mais grave.
+const SIZE_RANGES = {
+  '6':[330,420],   // tom miúdo
+  '8':[260,330],   // tom 8
+  '10':[200,260],  // tom 10 / caixa 10
+  '12':[150,200],  // tom 12 / surdo 12 / caixa 12
+  '13':[130,170],  // tom 13 / caixa 13
+  '14':[110,150],  // caixa 14 / surdo 14
+  '16':[80,110],   // surdo 16
+};
+const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
 
   // ---------- Estado ----------
   let kit = [];
@@ -1083,8 +1113,17 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   const drumsStrip = $('drumsStrip');
 
   const CX = 250, CY = 250, LUG_R = 196, BOLT_R = 15, GAUGE_R = 24, GAUGE_W = 5;
-  const SIZES = { tom:['8','10','12','13','14','16'], surdo:['12','13','14'], floor:['16','18','20','22'], bumbo:['16','18','20','22','24'], caixa:['13','14'] };
-  const TYPE_LABEL = { tom:'Tom', surdo:'Surdo', floor:'Floor', bumbo:'Bumbo', caixa:'Caixa' };
+  // Tamanhos praticados em bar no Brasil. É a lista que o músico ve na tela
+  // de afinacao, por isso vai curta e com os medidas de uso comum.
+  const SIZES = {
+    tom:   ['6','8','10','12','13'],
+    surdo: ['12','14','16'],
+    bumbo: ['16','18','20','22'],
+    caixa: ['10','12','13','14'],
+  };
+  const TYPE_LABEL = { tom:'Tom', surdo:'Surdo', bumbo:'Bumbo', caixa:'Caixa' };
+  // Ordem em que os tipos aparecem no seletor: de cima para baixo na bateria.
+  const TYPE_ORDER = ['tom','surdo','bumbo','caixa'];
 
   // ---------- Persistência ----------
   function load(key, fallback){
@@ -1154,7 +1193,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
       if (r) return { min:r[0], max:r[1], fixed:false };
       return null;
     }
-    const r = MODERN_RANGES[String(size)];
+    const r = SIZE_RANGES[String(size)];
     if (r) return { min:r[0], max:r[1], fixed:false };
     return null;
   }
@@ -1748,6 +1787,85 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     targetLine.innerHTML = html;
   }
 
+  // ---------- Seletor de tambor da tela de afinacao ----------
+  // O caminho antes do show: escolher a peca (tipo + medida) e ja ficar
+  // pronto a bater. Se o tambor ja esta no kit, e so seleccionar. Se nao
+  // esta, e criado com a afinacao sugerida pelo estilo activo.
+  let pickType = 'tom';
+
+  function findDrum(type, size){
+    return kit.find(d => d.type === type && d.size === String(size)) || null;
+  }
+
+  // Cria o tambor se ainda nao existir no kit, com a nota/Hz sugeridos.
+  function ensureDrum(type, size){
+    const ex = findDrum(type, size);
+    if (ex) return ex;
+    const sug = suggestFor(type, size);
+    const d = {
+      id: 'k' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+      name: TYPE_LABEL[type] + ' ' + size,
+      type: type, size: String(size),
+    };
+    if (sug && sug.fixed){
+      d.batterNote = sug.note || null;
+      d.batterHz = Math.round(sug.batterHz);
+      d.batterF0 = Math.round(sug.batterHz);
+      d.resoNote = sug.resoNote || null;
+      d.resoHz = sug.resoHz ? Math.round(sug.resoHz) : null;
+      d.resoF0 = d.resoHz;
+    }
+    kit.push(d);
+    save(KIT_KEY, kit);
+    return d;
+  }
+
+  function renderDrumPick(){
+    const tBox = $('dpTypes'), sBox = $('dpSizes');
+    if (!tBox || !sBox) return;
+
+    // --- tipos ---
+    tBox.innerHTML = '';
+    TYPE_ORDER.forEach((tp)=>{
+      const b = document.createElement('button');
+      b.className = 'dp-type' + (tp === pickType ? ' on' : '');
+      b.type = 'button';
+      b.textContent = TYPE_LABEL[tp];
+      b.addEventListener('click', ()=>{
+        pickType = tp;
+        renderDrumPick();
+      });
+      tBox.appendChild(b);
+    });
+
+    // --- medidas desse tipo ---
+    sBox.innerHTML = '';
+    const sizes = SIZES[pickType] || [];
+    const sel = drum();
+    sizes.forEach((sz)=>{
+      const saved = findDrum(pickType, sz);
+      const isSel = sel && sel.type === pickType && sel.size === String(sz);
+      const b = document.createElement('button');
+      b.className = 'dp-size' + (isSel ? ' on' : '') + (saved ? ' saved' : '');
+      b.type = 'button';
+      const n = document.createElement('span');
+      n.className = 'in';
+      n.textContent = sz;
+      const u = document.createElement('span');
+      u.className = 'un';
+      u.textContent = saved ? 'no kit' : 'polegar';
+      b.appendChild(n); b.appendChild(u);
+      // Um toque: garante que existe, selecciona e abre a afinacao.
+      b.addEventListener('click', ()=>{
+        const d = ensureDrum(pickType, sz);
+        if (d) selectDrum(d.id);
+        renderKit();
+        renderDrumPick();
+      });
+      sBox.appendChild(b);
+    });
+  }
+
   // ---------- Tela 2: Kit ----------
   // Silhueta de cada tipo de tambor, desenhada em SVG. A largura e
   // proporcional a medida real (em polegadas) para o musician distinguir a
@@ -1921,40 +2039,14 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     });
   }
 
-  // Kits de bar em destaque: e o que o músico usa em bar no Brasil, e o que
-  // precisa de estar a um toque antes de subir ao palco. Monta o kit e ja
-  // abre a tela de afinacao no primeiro tambor.
-  const FAST_KITS = [
-    { key:'reggae',  label:'Roots',    sub:'18 · 8 · 10 · 12' },
-    { key:'classico', label:'Completo', sub:'22 · 10 · 12 · 14' },
-    { key:'pequeno',  label:'Barzinho', sub:'18 · 8 · 10 · 12' },
-  ];
-
-  function renderFastKits(){
-    const box = $('kitFast');
-    if (!box) return;
-    box.innerHTML = '';
-    FAST_KITS.forEach((f)=>{
-      const b = document.createElement('button');
-      b.className = 'kit-fast-btn';
-      b.type = 'button';
-      const t = document.createElement('b');
-      t.textContent = f.label;
-      const s = document.createElement('span');
-      s.textContent = f.sub;
-      b.appendChild(t);
-      b.appendChild(s);
-      b.addEventListener('click', ()=>{
-        applyProfile(f.key);
-        go('afinar');
-        if (kit.length) selectDrum(kit[0].id);
-      });
-      box.appendChild(b);
-    });
-  }
+  // Ao mudar de tambor o seletor da tela de afinacao acompanha, para o
+  // musician ver sempre em que peca esta.
 
   function selectDrum(id){
     current = id;
+    const alvo = drum();
+    // O seletor da tela de afinacao acompanha o tambor escolhido.
+    if (alvo && SIZES[alvo.type] && SIZES[alvo.type].indexOf(String(alvo.size)) >= 0) pickType = alvo.type;
     measurements = new Array(lugCount).fill(null);
     refHz = null; lockedTargetHz = null;
     selectedLug = 0;
@@ -1975,6 +2067,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     vsMedia.textContent = '';
     status(d ? 'Bate num parafuso' : 'Escolhe um tambor em cima');
     if (document.body.classList.contains('stage-mode')) renderStageDrums();
+    renderDrumPick();
     go('afinar');
   }
 
@@ -2613,7 +2706,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   fillStyleMenu(kitStyleMenu);
   fillSizes();
   renderKit();
-  renderFastKits();
+  renderDrumPick();
   buildPiano();
   updateNoteTargetLabel();
   renderIntervals();
