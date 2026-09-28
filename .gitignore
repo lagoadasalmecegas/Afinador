@@ -9,3 +9,8 @@ Thumbs.db
 
 .build/
 
+
+# temporários do agente
+.patches/
+.p2/
+.build/
