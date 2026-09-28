@@ -2730,6 +2730,15 @@ const BUMBO_RANGES = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] };
     micBtn.disabled = true;
     status('Este navegador não deixa usar o microfone');
   }
+
+  // Service worker: a app abre sem rede depois da primeira visita.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        // Silencioso. Se falhar (Safari antigo, modo privado), a app continua online.
+      });
+    });
+  }
 })();
 </script>
 
