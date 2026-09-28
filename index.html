@@ -205,22 +205,73 @@
   .lug.suggested .bolt{ animation: lugPulse 1.8s ease-in-out infinite; }
   @keyframes lugPulse{ 0%, 100%{ opacity:0.45; } 50%{ opacity:1; } }
 
-  /* ---- Modo palco ---- */
+  /* ---- Modo palco ----
+     Fica so o que serve para afinar: medidor, nota, Hz, veredicto e os
+     botoes de tambor. O resto (kit, abas, f0/f1, alvo em texto) some.
+     O fundo inteiro muda de cor conforme a afinacao. */
   body.stage-mode .topbar,
   body.stage-mode .colorbar,
   body.stage-mode .bottom-nav,
   body.stage-mode .top-controls,
   body.stage-mode .bottom-row,
   body.stage-mode .vs-media,
-  body.stage-mode .status-line{ display:none; }
+  body.stage-mode .status-line,
+  body.stage-mode .target-line,
+  body.stage-mode .hit-warn,
+  body.stage-mode .consistency-warn{ display:none; }
+
+  /* Fundo do palco conforme a afinacao (classe posta no body). */
   body.stage-mode{ background:#000; }
-  body.stage-mode .stage-wrap{ padding:4vh 8px 0; align-items:flex-start; }
-  body.stage-mode .stage-wrap svg{ height:58vh; width:auto; margin:0 auto; }
+  body.stage-mode.tune-ok{ background:#0d2a12; }      /* verde: no ponto */
+  body.stage-mode.tune-near{ background:#2b2408; }     /* dourado: perto */
+  body.stage-mode.tune-far{ background:#2e0d0b; }      /* vermelho: longe do alvo */
+
+  body.stage-mode .stage-wrap{ padding:2vh 8px 0; align-items:center; }
+  body.stage-mode .stage-wrap svg{ height:52vh; width:auto; margin:0 auto; }
   body.stage-mode .readout{ padding-top:1vh; }
-  body.stage-mode .note-line{ font-size:clamp(48px, 15vw, 96px); }
-  body.stage-mode .hz-line{ font-size:24px; }
+  body.stage-mode .note-line{ font-size:clamp(56px, 19vw, 116px); }
+  body.stage-mode .hz-line{ font-size:30px; }
+  body.stage-mode .verdict{ font-size:clamp(30px, 10vw, 58px); }
   body.stage-mode .gauge-wrap svg{ width:60%; max-width:500px; }
-  body.stage-mode .gauge-labels{ max-width:500px; }
+  body.stage-mode .gauge-labels,
+  body.stage-mode .gauge-cents{ max-width:500px; }
+
+  /* Botoes de tambore em grade, maiores para o palco */
+  body.stage-mode .drums-strip{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(104px, 1fr));
+    gap:9px;
+    padding:10px 14px calc(14px + env(safe-area-inset-bottom));
+  }
+  body.stage-mode .drums-strip button{
+    background:var(--panel-2);
+    border:2px solid var(--line);
+    border-radius:14px;
+    padding:13px 6px;
+    text-align:center;
+  }
+  body.stage-mode .drums-strip button b{ display:block; font-family:'Barlow Condensed', sans-serif; font-size:20px; font-weight:800; }
+  body.stage-mode .drums-strip button span{ font-size:12px; color:var(--muted); }
+  body.stage-mode .drums-strip button.on{ border-color:var(--marca-dourado); }
+  .drums-strip{ display:none; }   /* so existe no palco */
+
+  /* Botao do palco no canto superior direito */
+  .stage-btn-corner{
+    position:absolute;
+    top:calc(8px + env(safe-area-inset-top));
+    right:12px;
+    z-index:30;
+    display:flex; align-items:center; gap:6px;
+    background:rgba(0,0,0,0.45);
+    border:1px solid var(--line);
+    color:var(--muted);
+    border-radius:10px;
+    padding:8px 12px;
+    font-size:11px; font-weight:600;
+  }
+  .stage-btn-corner.on{ border-color:var(--marca-verde); color:var(--marca-verde); }
+  body.stage-mode .stage-btn-corner{ display:none; }
+
   .stage-exit{ position:absolute; top:calc(10px + env(safe-area-inset-top)); right:12px; z-index:50; background:rgba(0,0,0,0.45); border:1px solid var(--line); color:var(--muted); border-radius:10px; padding:9px 13px; font-size:11px; font-weight:600; display:none; }
   body.stage-mode .stage-exit{ display:block; }
 
@@ -406,6 +457,7 @@
   <div class="colorbar"><i></i><i></i><i></i></div>
 
   <button class="stage-exit" id="stageExit">Sair</button>
+  <button class="stage-btn-corner" id="stageCorner"><span>🎭</span><span class="lbl">Palco</span></button>
 
   <!-- Abertura: logo completo, some sozinho em 3s ou ao tocar -->
   <div class="splash" id="splash">
@@ -468,6 +520,8 @@
       <div class="vs-media" id="vsMedia"></div>
       <div class="status-line" id="statusLine">Ligar microfone para começar</div>
     </div>
+
+    <div class="drums-strip" id="drumsStrip"></div>
 
     <div class="bottom-row">
       <button id="micBtn"><span class="ic">🎤</span><span class="lbl">Microfone</span></button>
@@ -872,6 +926,8 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   const intervalList = $('intervalList');
   const sustainRange = $('sustainRange'), sustainVal = $('sustainVal');
   const gaugeCents = $('gaugeCents');
+  const stageCorner = $('stageCorner');
+  const drumsStrip = $('drumsStrip');
 
   const CX = 250, CY = 250, LUG_R = 196, BOLT_R = 15, GAUGE_R = 24, GAUGE_W = 5;
   const SIZES = { tom:['8','10','12','13','14','16'], surdo:['12','13','14'], floor:['16','18','20','22'], bumbo:['16','18','20','22','24'], caixa:['13','14'] };
@@ -1446,6 +1502,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     paintLugs();
     doFlash(word.replace(/[▲▼●]/g, '').trim(), color);
     updateNeedleCents(cents);
+    paintStageBg(cents);
     feedback();
     lockBtn.hidden = !(refHz != null);
 
@@ -1646,6 +1703,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     setReading(null, audioCtx ? 'BATEN' : 'LIGA O MICROFONE', audioCtx ? 'var(--brass)' : 'var(--muted)');
     vsMedia.textContent = '';
     status(d ? 'Bate num parafuso' : 'Escolhe um tambor em cima');
+    if (document.body.classList.contains('stage-mode')) renderStageDrums();
     go('afinar');
   }
 
@@ -2110,12 +2168,76 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     }
   });
 
+  // ---------- Modo palco ----------
+  // Mantem o ecra aceso enquanto se toca, e pinta o fundo conforme a afinação.
+  let wakeLock = null;
+  async function keepAwake(on){
+    try{
+      if (on){
+        if (!navigator.wakeLock || !navigator.wakeLock.request) return;
+        wakeLock = await navigator.wakeLock.request('screen');
+        // ao voltar ao separador o bloqueio pode expirar: volta a pedir
+        if (wakeLock && wakeLock.addEventListener){
+          wakeLock.addEventListener('release', ()=>{ if (document.body.classList.contains('stage-mode')) keepAwake(true); });
+        }
+      } else if (wakeLock){
+        try{ await wakeLock.release(); }catch(e){}
+        wakeLock = null;
+      }
+    }catch(e){ /* sem wakeLock: o app funciona igual, so o ecra pode apagar */ }
+  }
+
+  // Fundo do palco: verde no ponto, dourado perto, vermelho longe do alvo.
+  function paintStageBg(cents){
+    document.body.classList.remove('tune-ok', 'tune-near', 'tune-far');
+    if (cents == null || !isFinite(cents)) return;
+    const a = Math.abs(cents);
+    if (a <= CENT_OK) document.body.classList.add('tune-ok');
+    else if (a <= CENT_WARN) document.body.classList.add('tune-near');
+    else document.body.classList.add('tune-far');
+  }
+
+  // Botoes de tambor em grade, so visiveis no palco.
+  function renderStageDrums(){
+    if (!kit.length){ drumsStrip.innerHTML = ''; return; }
+    drumsStrip.innerHTML = '';
+    kit.forEach(d=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      if (d.id === current) b.className = 'on';
+      const nm = document.createElement('b');
+      nm.textContent = d.name;
+      const sub = document.createElement('span');
+      const hz = skin === 'batter' ? d.batterHz : d.resoHz;
+      const note = skin === 'batter' ? d.batterNote : d.resoNote;
+      sub.textContent = hz ? ((note || '') + ' · ' + hz + ' Hz') : '—';
+      b.appendChild(nm); b.appendChild(sub);
+      b.addEventListener('click', ()=>{ selectDrum(d.id); renderStageDrums(); paintStageBg(null); });
+      drumsStrip.appendChild(b);
+    });
+  }
+
   function setStage(on){
     document.body.classList.toggle('stage-mode', on);
     stageBtn.classList.toggle('on', on);
+    stageCorner.classList.toggle('on', on);
+    if (on){
+      renderStageDrums();
+      paintStageBg(null);
+      keepAwake(true);
+    } else {
+      keepAwake(false);
+      paintStageBg(null);
+    }
   }
   stageBtn.addEventListener('click', ()=> setStage(!document.body.classList.contains('stage-mode')));
+  stageCorner.addEventListener('click', ()=> setStage(!document.body.classList.contains('stage-mode')));
   stageExit.addEventListener('click', ()=> setStage(false));
+  // sair do palco ao voltar a mexer nas outras abas
+  document.addEventListener('visibilitychange', ()=>{
+    if (document.hidden) keepAwake(false);
+    else if (document.body.classList.contains('stage-mode')) keepAwake(true);
+  });
 
   const bottomNav = $('bottomNav');
   function go(target){
