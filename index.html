@@ -264,6 +264,37 @@
   .action-row .act-main:disabled{ background:var(--panel); color:var(--muted); }
   .action-row .act-main:not(:disabled):active{ filter:brightness(0.9); }
 
+  /* Ilustração do tambor: desenhada em SVG, sem fotos pesadas.
+     Cada tipo tem a sua silhueta para o músico distinguir de relance. */
+  .kc-art{ width:46px; height:46px; flex:0 0 auto; }
+  .kc-art svg{ width:100%; height:100%; display:block; }
+
+  /* Botão de afinação rápida: leva ao tambor já selecionado. */
+  .kc-tune{
+    display:block; width:100%;
+    background:var(--ok); border:none; border-radius:8px;
+    padding:8px 10px; margin-top:2px;
+    font-size:11.5px; font-weight:800; letter-spacing:0.03em;
+    color:#0e1512;
+  }
+  .kc-tune:active{ filter:brightness(0.9); }
+
+  /* Preset em destaque no topo da tela de kit. */
+  .kit-fast{ margin-bottom:12px; }
+  .kit-fast-h{
+    font-size:11px; font-weight:700; letter-spacing:0.06em;
+    color:var(--marca-dourado); text-transform:uppercase; margin-bottom:6px;
+  }
+  .kit-fast-row{ display:flex; gap:6px; }
+  .kit-fast-btn{
+    flex:1 1 0; background:var(--panel); border:1px solid var(--brass);
+    border-radius:11px; padding:9px 6px;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+  }
+  .kit-fast-btn:active{ background:var(--panel-2); }
+  .kit-fast-btn b{ font-size:12px; font-weight:800; color:var(--brass); }
+  .kit-fast-btn span{ font-size:10px; color:var(--muted); line-height:1.25; }
+
   .bottom-row{ flex:0 0 auto; display:flex; gap:8px; padding:8px 12px calc(10px + env(safe-area-inset-bottom)); }
   .bottom-row button{ flex:1 1 0; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 6px; font-size:11px; font-weight:600; line-height:1.25; }
   .bottom-row button.on{ border-color:var(--ok); color:var(--ok); }
@@ -376,8 +407,8 @@
   .kit-card .kc-icon{ width:26px; height:26px; flex:0 0 auto; }
   .kit-card .kc-icon img{ width:100%; height:100%; object-fit:contain; display:block; }
   .kit-card .kc-body{ flex:1 1 auto; min-width:0; }
-  .kit-card .kc-name{ font-family:'Oswald', sans-serif; font-size:15px; font-weight:600; line-height:1.2; }
-  .kit-card .kc-sub{ font-size:12px; color:var(--muted); line-height:1.35; }
+  .kit-card .kc-name{ font-family:'Oswald', sans-serif; font-size:16px; font-weight:600; line-height:1.15; }
+  .kit-card .kc-sub{ font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--brass); line-height:1.3; }
   .kit-notes{ font-family:'JetBrains Mono', monospace; font-size:12px; line-height:1.5; }
   .kit-notes .n-batter{ color:var(--brass); }
   .kit-notes .n-reso{ color:var(--cream); }
@@ -659,6 +690,11 @@
 
       <div class="style-bar">
         <button class="kit-profile" id="editNotesBtn">🎹 Editar intervalos</button>
+      </div>
+
+      <div class="kit-fast">
+        <div class="kit-fast-h">Kits de bar</div>
+        <div class="kit-fast-row" id="kitFast"></div>
       </div>
 
       <button class="kit-profile" id="newKitBtn">+ Novo kit<span class="kp-sub">Escolhe um perfil pronto</span></button>
@@ -1713,6 +1749,53 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   }
 
   // ---------- Tela 2: Kit ----------
+  // Silhueta de cada tipo de tambor, desenhada em SVG. A largura e
+  // proporcional a medida real (em polegadas) para o musician distinguir a
+  // peca de relance antes do show: um bumbo 18 e bem maior que um tom 8.
+  const DRUM_ART = {
+    // h = altura da caixa em relacao a largura; wood = cor da madeira
+    tom:   { h:0.70, wood:'#4a3722', lugs:8 },
+    surdo: { h:0.84, wood:'#3a2817', lugs:8 },
+    caixa: { h:0.48, wood:'#5a4020', lugs:10 },
+    bumbo: { h:0.60, wood:'#4a3722', lugs:8 },
+    floor: { h:0.78, wood:'#40301c', lugs:8 },
+  };
+  const ART_W = 30;   // largura maxima no viewBox, para a maior peca caber
+
+  function drumArt(type, size){
+    const spec = DRUM_ART[type] || DRUM_ART.tom;
+    const V = 34;
+    const inches = parseFloat(size) || 10;
+    const boxW = Math.max(5, Math.min(ART_W, inches * 1.25));
+    const boxH = boxW * spec.h;
+    const cx = V / 2;
+    const topY = V / 2 - boxH / 2;
+    const botY = V / 2 + boxH / 2;
+    const el = boxW / 2;
+    const ry = Math.max(1.1, boxH * 0.17);
+    const f2 = (n) => n.toFixed(2);
+
+    // Ferragens verticais nas duas varas, dentro da madeira. E o que faz
+    // reconhecer um tambor de lado.
+    const lugs = [];
+    for (let i = 0; i < spec.lugs; i++){
+      const y = topY + boxH * (0.16 + 0.68 * (i / (spec.lugs - 1)));
+      lugs.push(`<rect x="${f2(cx - el + 1.1)}" y="${f2(y - 0.8)}" width="1.6" height="1.6" rx="0.35" fill="#d6cfb4"/>`);
+      lugs.push(`<rect x="${f2(cx + el - 2.7)}" y="${f2(y - 0.8)}" width="1.6" height="1.6" rx="0.35" fill="#d6cfb4"/>`);
+    }
+    const aro = (y) => `<ellipse cx="${f2(cx)}" cy="${f2(y)}" rx="${f2(el)}" ry="${f2(ry)}" fill="none" stroke="#d6cfb4" stroke-width="0.8"/>`;
+
+    return `<svg viewBox="0 0 ${V} ${V}" aria-hidden="true" focusable="false">
+      <ellipse cx="${f2(cx)}" cy="${f2(botY + ry * 0.55)}" rx="${f2(el * 1.05)}" ry="${f2(ry * 0.6)}" fill="#050a06" opacity="0.5"/>
+      <path d="M ${f2(cx - el)} ${f2(topY)} L ${f2(cx - el)} ${f2(botY)} A ${f2(el)} ${f2(ry)} 0 0 0 ${f2(cx + el)} ${f2(botY)} L ${f2(cx + el)} ${f2(topY)} Z" fill="${spec.wood}"/>
+      ${lugs.join('')}
+      ${aro(botY)}
+      ${aro(topY)}
+      <ellipse cx="${f2(cx)}" cy="${f2(topY)}" rx="${f2(el)}" ry="${f2(ry)}" fill="#f2ecda" stroke="#1a1208" stroke-width="0.5"/>
+      <ellipse cx="${f2(cx)}" cy="${f2(topY + ry * 0.2)}" rx="${f2(el * 0.78)}" ry="${f2(ry * 0.55)}" fill="#ffffff" opacity="0.4"/>
+    </svg>`;
+  }
+
   function drumIcon(){
     const el = document.querySelector('[data-icon="tune"]');
     return (el && el.src) ? el.src : '';
@@ -1745,19 +1828,18 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
       card.type = 'button';
 
       const icon = document.createElement('span');
-      icon.className = 'kc-icon';
-      const img = document.createElement('img');
-      img.src = drumIcon(); img.alt = '';
-      icon.appendChild(img);
+      icon.className = 'kc-art';
+      icon.innerHTML = drumArt(d.type, d.size);
 
       const body = document.createElement('span');
       body.className = 'kc-body';
       const nm = document.createElement('span');
       nm.className = 'kc-name';
-      nm.textContent = d.name + (d.size ? ' · ' + d.size + '"' : '');
+      // tipo em cima, medida em baixo: e assim que se le no palco
+      nm.textContent = TYPE_LABEL[d.type] || d.type;
       const sub = document.createElement('span');
       sub.className = 'kc-sub';
-      sub.textContent = TYPE_LABEL[d.type] || d.type;
+      sub.textContent = d.size ? d.size + '"' : '';
 
       const notes = document.createElement('span');
       notes.className = 'kc-f0f1';
@@ -1819,9 +1901,55 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
       right.appendChild(document.createElement('br'));
       right.appendChild(nb);
 
+      // Botao principal: leva a afinar ESTE tambor, num toque.
+      const tb = document.createElement('button');
+      tb.className = 'kc-tune';
+      tb.type = 'button';
+      tb.textContent = 'Afinar';
+      tb.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        selectDrum(d.id);
+        go('afinar');
+      });
+      right.appendChild(document.createElement('br'));
+      right.appendChild(tb);
+
       card.appendChild(icon); card.appendChild(body); card.appendChild(right);
-      card.addEventListener('click', ()=>{ selectDrum(d.id); });
+      // Tocar no tambor tambem leva a afinar: o caminho mais curto no palco.
+      card.addEventListener('click', ()=>{ selectDrum(d.id); go('afinar'); });
       kitList.appendChild(card);
+    });
+  }
+
+  // Kits de bar em destaque: e o que o músico usa em bar no Brasil, e o que
+  // precisa de estar a um toque antes de subir ao palco. Monta o kit e ja
+  // abre a tela de afinacao no primeiro tambor.
+  const FAST_KITS = [
+    { key:'reggae',  label:'Roots',    sub:'18 · 8 · 10 · 12' },
+    { key:'classico', label:'Completo', sub:'22 · 10 · 12 · 14' },
+    { key:'pequeno',  label:'Barzinho', sub:'18 · 8 · 10 · 12' },
+  ];
+
+  function renderFastKits(){
+    const box = $('kitFast');
+    if (!box) return;
+    box.innerHTML = '';
+    FAST_KITS.forEach((f)=>{
+      const b = document.createElement('button');
+      b.className = 'kit-fast-btn';
+      b.type = 'button';
+      const t = document.createElement('b');
+      t.textContent = f.label;
+      const s = document.createElement('span');
+      s.textContent = f.sub;
+      b.appendChild(t);
+      b.appendChild(s);
+      b.addEventListener('click', ()=>{
+        applyProfile(f.key);
+        go('afinar');
+        if (kit.length) selectDrum(kit[0].id);
+      });
+      box.appendChild(b);
     });
   }
 
@@ -2485,6 +2613,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   fillStyleMenu(kitStyleMenu);
   fillSizes();
   renderKit();
+  renderFastKits();
   buildPiano();
   updateNoteTargetLabel();
   renderIntervals();
