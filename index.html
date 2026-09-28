@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Afinador do Mestre Lion</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Barlow+Condensed:wght@600;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg: #0f2116;
@@ -34,7 +34,36 @@
   }
   button{ font-family:inherit; text-transform:uppercase; letter-spacing:0.02em; cursor:pointer; color:inherit; }
   button:disabled{ opacity:0.4; cursor:not-allowed; }
-  .app{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; position:relative; }
+  /* Navegacao por teclado: foco bem visivel, so quando via teclado */
+  button:focus{ outline:none; }
+  button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible{
+    outline:3px solid var(--brass);
+    outline-offset:2px;
+  }
+  /* Quem tem reduzir o movimento activado nao leva animacoes */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration:0.001ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:0.001ms !important;
+      scroll-behavior:auto !important;
+    }
+    .lug.suggested .bolt{ opacity:1; }
+  }
+  .app{
+    flex:1 1 auto;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    /* Limite de largura: em palco a app deve manter as proporcoes como
+       um instrumento, nao esticar-se num tablet como se fosse um site. */
+    width:100%;
+    max-width:420px;
+    margin:0 auto;
+    box-shadow:0 0 40px rgba(0,0,0,0.5);
+  }
+  body{ background:#050805; }
 
   .topbar{ flex:0 0 auto; display:flex; align-items:center; gap:10px; padding:8px 14px 10px; }
   .topbar .lion-wrap{ width:80px; height:80px; flex:0 0 auto; border-radius:50%; overflow:hidden; border:2px solid var(--brass); }
@@ -84,11 +113,33 @@
   .stage-wrap{ flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:0 10px; }
   .stage-wrap svg{ width:100%; height:100%; max-height:100%; display:block; }
 
-  /* Leitura gigante em duas linhas: nota+cents, depois Hz */
+  /* Leitura em duas linhas: nota+cents, depois Hz.
+     Barlow Condensed e mais estreita que a Oswald: a mesma informacao
+     numa letra mais alta, legivel a varios metros de distancia. */
   .readout{ flex:0 0 auto; padding:2px 12px 6px; text-align:center; }
-  .note-line{ font-family:'Oswald', sans-serif; font-weight:700; font-size:clamp(30px, 8.5vw, 48px); line-height:1; min-height:1em; }
-  .hz-line{ font-family:'JetBrains Mono', monospace; font-size:24px; color:var(--muted); margin-top:2px; min-height:1em; }
-  .verdict{ font-family:'Oswald', sans-serif; font-weight:700; font-size:clamp(22px, 6.5vw, 38px); line-height:1.1; margin-top:2px; min-height:1em; }
+  .note-line{
+    font-family:'Barlow Condensed', sans-serif;
+    font-weight:800;
+    font-size:clamp(44px, 13vw, 72px);
+    line-height:0.95;
+    min-height:1em;
+  }
+  .hz-line{
+    font-family:'Barlow Condensed', sans-serif;
+    font-weight:600;
+    font-size:26px;
+    color:var(--muted);
+    margin-top:2px;
+    min-height:1em;
+  }
+  .verdict{
+    font-family:'Barlow Condensed', sans-serif;
+    font-weight:800;
+    font-size:clamp(28px, 8.5vw, 46px);
+    line-height:1.05;
+    margin-top:2px;
+    min-height:1em;
+  }
   .vs-media{ font-family:'JetBrains Mono', monospace; font-size:12px; margin-top:3px; min-height:1em; }
   .status-line{ font-size:12.5px; color:var(--muted); margin-top:3px; min-height:1.1em; padding:0 4px; }
 
@@ -105,6 +156,9 @@
   .needle-pivot{ fill:#17301f; stroke:#55e07a; stroke-width:3; }
   #needleGroup.idle .needle-pivot{ stroke: var(--line); }
   .gauge-labels{ display:flex; justify-content:space-between; margin-top:-6px; padding:0 6px; width:100%; max-width:320px; font-family:'Inter', sans-serif; font-size:10.5px; color:var(--muted); }
+  /* Escala em cents por baixo do ponteiro: diz QUANTO falta ajustar,
+     nao so em que direccao. */
+  .gauge-cents{ display:flex; justify-content:space-between; width:100%; max-width:320px; margin-top:2px; font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--muted); }
   .hit-warn{ font-size:32px; font-family:'Oswald', sans-serif; font-weight:600; color:var(--muted); text-align:center; min-height:1.1em; opacity:0; transition:opacity .2s; }
   .hit-warn.show{ opacity:1; }
   .consistency-warn{ font-size:20px; font-family:'Oswald', sans-serif; font-weight:600; color:var(--muted); text-align:center; min-height:1.1em; opacity:0; transition:opacity .2s; }
@@ -367,6 +421,7 @@
       <div class="gauge-labels">
         <span>Apertar</span><span>No ponto</span><span>Afrouxar</span>
       </div>
+      <div class="gauge-cents" id="gaugeCents"><span>−50¢</span><span>0</span><span>+50¢</span></div>
       <div class="hit-warn" id="hitWarn"></div>
       <div class="consistency-warn" id="consistencyWarn"></div>
     </div>
@@ -779,6 +834,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   const piano = $('piano'), noteReadout = $('noteReadout');
   const intervalList = $('intervalList');
   const sustainRange = $('sustainRange'), sustainVal = $('sustainVal');
+  const gaugeCents = $('gaugeCents');
 
   const CX = 250, CY = 250, LUG_R = 196, BOLT_R = 15, GAUGE_R = 24, GAUGE_W = 5;
   const SIZES = { tom:['8','10','12','13','14','16'], surdo:['12','13','14'], floor:['16','18','20','22'], bumbo:['16','18','20','22','24'], caixa:['13','14'] };
@@ -973,15 +1029,25 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   }
 
   // ---------- Ponteiro ----------
+  // Por baixo do ponteiro escreve os cents reais medidos, para o musico
+  // saber QUANTO falta ajustar e nao so em que direccao.
   function updateNeedle(dev){
     if (dev == null || !isFinite(dev)){
       needleGroup.classList.add('idle');
       needleGroup.setAttribute('transform', 'rotate(0 ' + NEEDLE_PIVOT + ')');
+      gaugeCents.innerHTML = '<span>&minus;50&cent;</span><span>0</span><span>+50&cent;</span>';
       return;
     }
     needleGroup.classList.remove('idle');
     const clamped = Math.max(-1, Math.min(1, dev / GAUGE_MAX_DEV));
     needleGroup.setAttribute('transform', 'rotate(' + (clamped * GAUGE_MAX_ANGLE).toFixed(2) + ' ' + NEEDLE_PIVOT + ')');
+    // 8% de desvio equivale a +-50 cents na leitura do ponteiro
+    const cents = Math.round(dev * 100 * (50 / 8));
+    const c = cents > 0 ? '+' : (cents < 0 ? '&minus;' : '');
+    const abs = Math.abs(cents);
+    gaugeCents.innerHTML = '<span>&minus;50&cent;</span><span style="color:' +
+      (Math.abs(cents) <= 5 ? COL.ok : (Math.abs(cents) <= 20 ? COL.loose : COL.tight)) +
+      ';font-weight:700">' + c + abs + '&cent;</span><span>+50&cent;</span>';
   }
 
   // ---------- Avisos ----------
