@@ -174,26 +174,69 @@
   .vs-media{ font-family:'JetBrains Mono', monospace; font-size:12px; margin-top:3px; min-height:1em; }
   .status-line{ font-size:12.5px; color:var(--muted); margin-top:3px; min-height:1.1em; padding:0 4px; }
 
-  /* Ponteiro */
-  .gauge-wrap{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; padding:0 14px 4px; }
-  .gauge-wrap svg{ width:100%; max-width:320px; height:auto; display:block; }
-  .gauge-band{ fill:none; stroke-width:16; stroke-linecap:butt; opacity:0.85; }
-  .band-loose{ stroke: var(--loose); }
-  .band-ok{ stroke: var(--ok); }
-  .band-tight{ stroke: var(--tight); }
-  .needle-line{ stroke:#55e07a; stroke-width:5; stroke-linecap:round; filter:drop-shadow(0 0 4px rgba(85,224,122,0.65)); }
-  #needleGroup{ transition: transform .25s cubic-bezier(.34,1.4,.64,1); }
-  #needleGroup.idle .needle-line{ stroke: var(--line); filter:none; }
-  .needle-pivot{ fill:#17301f; stroke:#55e07a; stroke-width:3; }
-  #needleGroup.idle .needle-pivot{ stroke: var(--line); }
-  .gauge-labels{ display:flex; justify-content:space-between; margin-top:-6px; padding:0 6px; width:100%; max-width:320px; font-family:'Inter', sans-serif; font-size:10.5px; color:var(--muted); }
-  /* Escala em cents por baixo do ponteiro: diz QUANTO falta ajustar,
+  /* Faixa horizontal de cents: vermelho nas pontas, verde no centro.
+     Substitui o medidor em arco, mas a escala e a mesma (+-50 cents). */
+  .cents-wrap{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; padding:2px 14px 4px; }
+  .cents-track{
+    position:relative;
+    width:100%; max-width:420px;
+    height:26px;
+    display:flex; gap:2px;
+    border-radius:999px; overflow:hidden;
+  }
+  .cents-track .seg{ flex:1 1 0; }
+  .seg-tight{ background:var(--tight); }
+  .seg-loose{ background:var(--loose); }
+  .seg-ok{ background:var(--ok); }
+  .cents-needle{
+    position:absolute; top:-2px; bottom:-2px; left:50%;
+    width:4px; margin-left:-2px;
+    background:#fff; border-radius:2px;
+    box-shadow:0 0 6px rgba(255,255,255,0.75);
+    transition:left .18s ease-out;
+  }
+  .cents-needle.idle{ background:var(--line); box-shadow:none; }
+  /* Escala em cents por baixo da faixa: diz QUANTO falta ajustar,
      nao so em que direccao. */
-  .gauge-cents{ display:flex; justify-content:space-between; width:100%; max-width:320px; margin-top:2px; font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--muted); }
+  .gauge-cents{ display:flex; justify-content:space-between; width:100%; max-width:420px; margin-top:4px; font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--muted); }
+
+  /* f0 e f1: o que o motor mediu nesta batida */
+  .f0f1{ flex:0 0 auto; display:flex; gap:8px; padding:2px 14px 0; }
+  .f0f1-card{
+    flex:1 1 0; min-width:0;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:7px 10px;
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .f0f1-card .lbl{ font-family:'Inter', sans-serif; font-size:10.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .f0f1-card b{ font-family:'JetBrains Mono', monospace; font-size:15px; font-weight:600; color:var(--cream); }
+  .f0f1-card b.est{ color:var(--muted); }
   .hit-warn{ font-size:32px; font-family:'Oswald', sans-serif; font-weight:600; color:var(--muted); text-align:center; min-height:1.1em; opacity:0; transition:opacity .2s; }
   .hit-warn.show{ opacity:1; }
   .consistency-warn{ font-size:20px; font-family:'Oswald', sans-serif; font-weight:600; color:var(--muted); text-align:center; min-height:1.1em; opacity:0; transition:opacity .2s; }
   .consistency-warn.show{ opacity:1; }
+
+  /* Acao principal: Bater ao meio, ajustar 1/8 de cada lado */
+  .action-row{ flex:0 0 auto; display:flex; gap:8px; padding:6px 12px 0; }
+  .action-row .act-side{
+    flex:0 0 auto; min-width:88px;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:9px 12px;
+    display:flex; flex-direction:column; align-items:center; gap:1px;
+    font-size:12.5px; font-weight:600; line-height:1.2; color:var(--cream);
+  }
+  .action-row .act-side .sub{ font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--muted); }
+  .action-row .act-side:active{ background:var(--panel-2); }
+  .action-row .act-main{
+    flex:1 1 auto;
+    background:var(--ok); border:none; border-radius:12px;
+    padding:13px 8px;
+    font-family:'Barlow Condensed', sans-serif;
+    font-size:17px; font-weight:800; letter-spacing:0.03em;
+    color:#0e1512;
+  }
+  .action-row .act-main:disabled{ background:var(--panel); color:var(--muted); }
+  .action-row .act-main:not(:disabled):active{ filter:brightness(0.9); }
 
   .bottom-row{ flex:0 0 auto; display:flex; gap:8px; padding:8px 12px calc(10px + env(safe-area-inset-bottom)); }
   .bottom-row button{ flex:1 1 0; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 6px; font-size:11px; font-weight:600; line-height:1.25; }
@@ -219,6 +262,7 @@
   body.stage-mode .bottom-nav,
   body.stage-mode .top-controls,
   body.stage-mode .bottom-row,
+  body.stage-mode .action-row,
   body.stage-mode .vs-media,
   body.stage-mode .status-line,
   body.stage-mode .target-line,
@@ -237,9 +281,9 @@
   body.stage-mode .note-line{ font-size:clamp(56px, 19vw, 116px); }
   body.stage-mode .hz-line{ font-size:30px; }
   body.stage-mode .verdict{ font-size:clamp(30px, 10vw, 58px); }
-  body.stage-mode .gauge-wrap svg{ width:60%; max-width:500px; }
-  body.stage-mode .gauge-labels,
-  body.stage-mode .gauge-cents{ max-width:500px; }
+  body.stage-mode .cents-track{ max-width:560px; height:34px; }
+  body.stage-mode .gauge-cents{ max-width:560px; font-size:12px; }
+  body.stage-mode .f0f1{ display:none; }   /* no palco so o essencial */
 
   /* Botoes de tambor: grade de 2 colunas iguais, sem scroll */
   body.stage-mode .drums-strip{
@@ -515,22 +559,30 @@
       <svg id="drumSvg" viewBox="0 0 500 500"></svg>
     </div>
 
-    <div class="gauge-wrap">
-      <svg id="needleGauge" viewBox="0 0 260 150">
-        <path d="M 30 140 A 100 100 0 0 1 80 53.4" class="gauge-band band-loose"></path>
-        <path d="M 80 53.4 A 100 100 0 0 1 180 53.4" class="gauge-band band-ok"></path>
-        <path d="M 180 53.4 A 100 100 0 0 1 230 140" class="gauge-band band-tight"></path>
-        <g id="needleGroup" transform="rotate(0 130 140)">
-          <line x1="130" y1="140" x2="130" y2="48" class="needle-line"></line>
-          <circle cx="130" cy="140" r="9" class="needle-pivot"></circle>
-        </g>
-      </svg>
-      <div class="gauge-labels">
-        <span>Apertar</span><span>No ponto</span><span>Afrouxar</span>
+    <div class="cents-wrap">
+      <div class="cents-track" id="centsTrack">
+        <span class="seg seg-tight"></span>
+        <span class="seg seg-loose"></span>
+        <span class="seg seg-ok"></span>
+        <span class="seg seg-ok"></span>
+        <span class="seg seg-loose"></span>
+        <span class="seg seg-tight"></span>
+        <i class="cents-needle idle" id="centsNeedle"></i>
       </div>
       <div class="gauge-cents" id="gaugeCents"><span>−50¢</span><span>0</span><span>+50¢</span></div>
       <div class="hit-warn" id="hitWarn"></div>
       <div class="consistency-warn" id="consistencyWarn"></div>
+    </div>
+
+    <div class="f0f1">
+      <div class="f0f1-card">
+        <span class="lbl">f0 (fundamental)</span>
+        <b id="f0Val">—</b>
+      </div>
+      <div class="f0f1-card">
+        <span class="lbl">f1 (2º pico)</span>
+        <b id="f1Val">—</b>
+      </div>
     </div>
 
     <div class="readout">
@@ -542,6 +594,12 @@
     </div>
 
     <div class="drums-strip" id="drumsStrip"></div>
+
+    <div class="action-row">
+      <button class="act-side" id="loosenBtn"><span class="lbl">Afroxar</span><span class="sub">1/8</span></button>
+      <button class="act-main" id="strikeBtn">Bater</button>
+      <button class="act-side" id="tightenBtn"><span class="lbl">Apertar</span><span class="sub">1/8</span></button>
+    </div>
 
     <div class="bottom-row">
       <button id="micBtn"><span class="ic">🎤</span><span class="lbl">Microfone</span></button>
@@ -812,9 +870,9 @@ const SKIN = {
 };
 
 // ---------- Ponteiro ----------
+// GAUGE_MAX_DEV e o quanto um parafuso se afasta da media ate encher o anel.
+// A escala da faixa de cents vive em CENT_RANGE (ver mais abaixo).
 const GAUGE_MAX_DEV = 0.08;
-const GAUGE_MAX_ANGLE = 80;
-const NEEDLE_PIVOT = '130 140';
 
 // ---------- Deteção de dinâmica ----------
 const ONSET_RMS = 0.018;
@@ -932,7 +990,9 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   const vsMedia = $('vsMedia'), statusLine = $('statusLine');
   const micBtn = $('micBtn'), stageBtn = $('stageBtn'), lockBtn = $('lockBtn'), stageExit = $('stageExit');
   const flash = $('flash'), flashWord = $('flashWord');
-  const needleGroup = $('needleGroup');
+  const centsNeedle = $('centsNeedle');
+  const f0Val = $('f0Val'), f1Val = $('f1Val');
+  const strikeBtn = $('strikeBtn'), loosenBtn = $('loosenBtn'), tightenBtn = $('tightenBtn');
   const hitWarn = $('hitWarn'), consistencyWarn = $('consistencyWarn');
   const pickerBtn = $('pickerBtn'), pickerLabel = $('pickerLabel'), pickerMenu = $('pickerMenu');
   const styleBtn = $('styleBtn'), styleLabel = $('styleLabel'), styleMenu = $('styleMenu');
@@ -1125,7 +1185,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     });
   }
 
-  function selectLug(i){ selectedLug = i; paintLugs(); }
+  function selectLug(i){ selectedLug = i; paintLugs(); refreshStrike(); }
 
   function nextSuggested(){
     const un = [], me = [];
@@ -1160,23 +1220,43 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     return (r > 0 ? '+' : (r < 0 ? '−' : '')) + Math.abs(r) + '¢';
   }
 
-  // ---------- Ponteiro ----------
+  // ---------- Ponteiro / faixa ----------
   // Posicao e escala em CENTS (nao em percentagem), para o texto e a agulha
-  // contarem sempre a mesma historia.
+  // contarem sempre a mesma historia. Mesma escala do antigo arco: +-50 cents.
   function updateNeedleCents(cents){
     if (cents == null || !isFinite(cents)){
-      needleGroup.classList.add('idle');
-      needleGroup.setAttribute('transform', 'rotate(0 ' + NEEDLE_PIVOT + ')');
+      centsNeedle.classList.add('idle');
+      centsNeedle.style.left = '50%';
       gaugeCents.innerHTML = '<span>&minus;50&cent;</span><span>0</span><span>+50&cent;</span>';
       return;
     }
-    needleGroup.classList.remove('idle');
+    centsNeedle.classList.remove('idle');
     const clamped = Math.max(-1, Math.min(1, cents / CENT_RANGE));   // corta nas pontas
-    needleGroup.setAttribute('transform', 'rotate(' + (clamped * GAUGE_MAX_ANGLE).toFixed(2) + ' ' + NEEDLE_PIVOT + ')');
+    // -1 -> 0%, 0 -> 50%, +1 -> 100%
+    centsNeedle.style.left = (50 + clamped * 50).toFixed(2) + '%';
     const col = centsColor(cents);
     gaugeCents.innerHTML = '<span>&minus;50&cent;</span>' +
       '<span style="color:' + col + ';font-weight:700">' + fmtCents(cents) + '</span>' +
       '<span>+50&cent;</span>';
+  }
+
+  // ---------- f0 / f1: o que o motor mediu ----------
+  // f1 so e um pico real se o motor o encontrou. findF1 devolve a estimativa
+  // 1.5 x f0 quando nao ha segundo pico claro; nesse caso mostramos "~" para
+  // nao passar um numero inventado por medido.
+  function updateF0F1(freq, f1){
+    f0Val.textContent = (freq != null && isFinite(freq)) ? fmtHz(freq) : '—';
+    if (f1 == null || !isFinite(f1)){
+      f1Val.textContent = '—';
+      f1Val.classList.remove('est');
+      return;
+    }
+    const estimated = freq && Math.abs(f1 - freq * F1_RATIO) < 0.5;
+    f1Val.textContent = (estimated ? '~' : '') + fmtHz(f1);
+    f1Val.classList.toggle('est', !!estimated);
+  }
+  function fmtHz(hz){
+    return hz.toFixed(1).replace('.', ',') + ' Hz';
   }
 
   // ---------- Avisos ----------
@@ -1522,6 +1602,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     paintLugs();
     doFlash(word.replace(/[▲▼●]/g, '').trim(), color);
     updateNeedleCents(cents);
+    updateF0F1(freq, f1);
     paintStageBg(cents);
     feedback();
     lockBtn.hidden = !(refHz != null);
@@ -1717,6 +1798,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     buildDrum();
     selectLug(0);
     updateNeedleCents(null);
+    updateF0F1(null, null);
     hideConsistencyWarn();
     hideHitWarn();
     const d = drum();
@@ -1801,6 +1883,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     buildDrum();
     selectLug(0);
     updateNeedleCents(null);
+    updateF0F1(null, null);
     setVsMedia();
     updatePickerLabel();
     const d = drum();
@@ -2171,6 +2254,43 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     paintPiano(); syncSustain(); renderIntervals();
     go('notas');
   });
+
+  // ---------- Bater / ajustar 1/8 ----------
+  // "Bater" forca uma captura immediate. A captura automatica so arranca com
+  // um ataque acima do limiar; no palco as vezes o ataque passa entre frames,
+  // por isso ha um gatilho manual que usa exatamente o mesmo caminho.
+  strikeBtn.addEventListener('click', ()=>{
+    if(!audioCtx || !analyser){ status('Ligar microfone para bater'); return; }
+    if(selectedLug == null){ status('Escolhe um tambor em cima'); return; }
+    if(listening) return;                       // ja esta a ouvir
+    lastHit = performance.now();
+    autoCapture();
+  });
+
+  // Afroxar/Apertar deslocam o alvo em passos de 1/8 de volta, para poder
+  // diaminar a pele sem tocar no microfone. Um oitavo de volta num tambor
+  // afinado ronda os 50 cents, por isso o alvo muda de forma mensuravel.
+  const STEP_CENTS = 50;
+  function nudgeTarget(dir){
+    const base = lockedTargetHz != null ? lockedTargetHz : refHz;
+    if(base == null){ status('Bate uma vez para ter um alvo'); return; }
+    // 1/8 de volta num tambor afinado anda a volta dos 50 cents.
+    lockedTargetHz = base * Math.pow(2, (dir * STEP_CENTS) / 1200);
+    lockBtn.classList.add('locked');
+    lockBtn.querySelector('.lbl').textContent = 'Alvo travado';
+    const m = meanHz();
+    updateNeedleCents(m != null ? centsBetween(m, lockedTargetHz) : null);
+    paintLugs();
+    status((dir > 0 ? 'Apertar: alvo ' : 'Afroxar: alvo ') + Math.round(lockedTargetHz) + ' Hz');
+  }
+  loosenBtn.addEventListener('click', ()=> nudgeTarget(-1));
+  tightenBtn.addEventListener('click', ()=> nudgeTarget(1));
+
+  // O Bater so faz sentido com o microfone ligado e um parafuso escolhido.
+  function refreshStrike(){
+    strikeBtn.disabled = !(audioCtx && analyser) || selectedLug == null;
+  }
+  micBtn.addEventListener('click', ()=> setTimeout(refreshStrike, 0));
 
   // ---------- Alvo travado / palco / nav ----------
   lockBtn.addEventListener('click', ()=>{
