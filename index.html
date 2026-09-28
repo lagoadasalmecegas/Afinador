@@ -723,7 +723,9 @@ const SENS_KEY = 'mestrelion_sensibilidade';
 const TOCAR_KEY = 'mestrelion_tocar_notas';
 const POR_NOTA_KEY = 'mestrelion_afinar_por_nota';
 const SENS_PRESETS = { baixa: 0.08, media: 0.04, alta: 0.02 };
-const F1_RATIO = 1.593;   // constante empírica: f1 de um tambor ≈ 1.593 × f0
+  // Loja f1. Sem segundo pico claro, estima 1.5 x f0 (proporcao de overtone
+  // mais comum num tambor).
+  const F1_RATIO = 1.5;
 
 // ---------- Estilos ----------
 const STYLES = ['Roots', 'Moderno', 'Dub', 'Livre'];
@@ -1028,26 +1030,42 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     return best;
   }
 
+  // ---------- Cents: a medida unica de desvio ----------
+  // Tudo (texto, cor, ponteiro) usa estes cents. Escala: +-50 cents de ponta
+  // a ponta, com corte nas pontas.
+  const CENT_RANGE = 50;
+  const CENT_OK = 5, CENT_WARN = 20;
+  function centsBetween(freq, target){
+    if (freq == null || target == null) return null;
+    if (!isFinite(freq) || !isFinite(target) || freq <= 0 || target <= 0) return null;
+    return 1200 * Math.log(freq / target) / Math.LN2;
+  }
+  function centsColor(c){
+    const a = Math.abs(c);
+    return a <= CENT_OK ? COL.ok : (a <= CENT_WARN ? COL.loose : COL.tight);
+  }
+  function fmtCents(c){
+    const r = Math.round(c);
+    return (r > 0 ? '+' : (r < 0 ? '−' : '')) + Math.abs(r) + '¢';
+  }
+
   // ---------- Ponteiro ----------
-  // Por baixo do ponteiro escreve os cents reais medidos, para o musico
-  // saber QUANTO falta ajustar e nao so em que direccao.
-  function updateNeedle(dev){
-    if (dev == null || !isFinite(dev)){
+  // Posicao e escala em CENTS (nao em percentagem), para o texto e a agulha
+  // contarem sempre a mesma historia.
+  function updateNeedleCents(cents){
+    if (cents == null || !isFinite(cents)){
       needleGroup.classList.add('idle');
       needleGroup.setAttribute('transform', 'rotate(0 ' + NEEDLE_PIVOT + ')');
       gaugeCents.innerHTML = '<span>&minus;50&cent;</span><span>0</span><span>+50&cent;</span>';
       return;
     }
     needleGroup.classList.remove('idle');
-    const clamped = Math.max(-1, Math.min(1, dev / GAUGE_MAX_DEV));
+    const clamped = Math.max(-1, Math.min(1, cents / CENT_RANGE));   // corta nas pontas
     needleGroup.setAttribute('transform', 'rotate(' + (clamped * GAUGE_MAX_ANGLE).toFixed(2) + ' ' + NEEDLE_PIVOT + ')');
-    // 8% de desvio equivale a +-50 cents na leitura do ponteiro
-    const cents = Math.round(dev * 100 * (50 / 8));
-    const c = cents > 0 ? '+' : (cents < 0 ? '&minus;' : '');
-    const abs = Math.abs(cents);
-    gaugeCents.innerHTML = '<span>&minus;50&cent;</span><span style="color:' +
-      (Math.abs(cents) <= 5 ? COL.ok : (Math.abs(cents) <= 20 ? COL.loose : COL.tight)) +
-      ';font-weight:700">' + c + abs + '&cent;</span><span>+50&cent;</span>';
+    const col = centsColor(cents);
+    gaugeCents.innerHTML = '<span>&minus;50&cent;</span>' +
+      '<span style="color:' + col + ';font-weight:700">' + fmtCents(cents) + '</span>' +
+      '<span>+50&cent;</span>';
   }
 
   // ---------- Avisos ----------
@@ -1225,7 +1243,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
 
   // ---------- f1: primeiro overtone ----------
   // Procura na autocorrelacao um segundo pico proeminente entre 1.4x e 1.8x de f0.
-  // Se nao existir, estima f1 = f0 x 1.593 (constante empirica de tambor).
+  // Se nao existir, estima f1 = f0 x 1.5 (proporcao de overtone mais comum).
   function findF1(buf, sampleRate, f0){
     const est = f0 * F1_RATIO;
     if (!f0 || !isFinite(f0)) return est;
@@ -1374,18 +1392,25 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     if (target == null) target = lockedTargetHz != null ? lockedTargetHz : refHz;
 
     const dev = target ? (freq - target) / target : 0;
+    // Cents reais: a unica medida usada pelo texto, pela cor e pelo ponteiro.
+    const cents = centsBetween(freq, target);
     const t = effTol();
 
     let word, color;
-    if(target == null || Math.abs(dev) <= t){ word = 'NO PONTO'; color = COL.ok; }
-    else if(dev > 0){ word = '▼ AFROUXAR'; color = COL.tight; }
-    else { word = '▲ APERTAR'; color = COL.loose; }
+    // O veredicto usa a MESMA medida do ponteiro: os cents.
+    if(cents == null || Math.abs(cents) <= CENT_OK){
+      word = 'NO PONTO'; color = COL.ok;
+    } else if(cents > 0){
+      word = '▼ AFROUXAR'; color = centsColor(cents);
+    } else {
+      word = '▲ APERTAR'; color = centsColor(cents);
+    }
 
     setReading(freq, word, color);
     setVsMedia();
     paintLugs();
     doFlash(word.replace(/[▲▼●]/g, '').trim(), color);
-    updateNeedle(dev);
+    updateNeedleCents(cents);
     feedback();
     lockBtn.hidden = !(refHz != null);
 
@@ -1423,13 +1448,13 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
       d.sustainWarn = vals.length >= 3 && Math.min.apply(null, vals) < (vals.reduce((s,v)=>s+v,0)/vals.length) * 0.6;
       save(KIT_KEY, kit);
       updatePickerLabel();
-      updateTargetLine(freq, dev, t);
+      updateTargetLine(freq, cents);
       renderKit();
     }
   }
 
   // Linha de alvo no topo da Tela 1: "Tom 8 · alvo: E4 · 330 Hz"
-  function updateTargetLine(freq, dev, tolv){
+  function updateTargetLine(freq, cents){
     const d = drum();
     if (!d){ targetLine.innerHTML = ''; return; }
     const note = skin === 'batter' ? d.batterNote : d.resoNote;
@@ -1439,16 +1464,15 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
       return;
     }
     let html = d.name + ' · alvo: <b>' + note + '</b> · ' + hz + ' Hz';
-    if (freq != null && dev != null){
-      if (Math.abs(dev) <= tolv){
+    if (freq != null && cents != null){
+      if (Math.abs(cents) <= CENT_OK){
         const n = hzToNote(freq);
         html += ' <span class="on-target">✓ ' + (n ? n.name : '') + ' · ' + Math.round(freq) + ' Hz · no alvo</span>';
       } else {
         const n = hzToNote(freq);
-        const cents = n && n.cents > 0 ? '+' + n.cents + '¢' : (n ? n.cents + '¢' : '');
-        const arrow = dev > 0 ? '▲' : '▼';
-        const word = dev > 0 ? 'afrouxar' : 'apertar';
-        html += ' <span class="off-target">' + arrow + ' ' + (n ? n.name : '') + ' (' + cents + ') · ' + Math.round(freq) + ' Hz — ' + word + '</span>';
+        const arrow = cents > 0 ? '▲' : '▼';
+        const word = cents > 0 ? 'afrouxar' : 'apertar';
+        html += ' <span class="off-target">' + arrow + ' ' + (n ? n.name : '') + ' (' + fmtCents(cents) + ') · ' + Math.round(freq) + ' Hz — ' + word + '</span>';
       }
     }
     targetLine.innerHTML = html;
@@ -1580,7 +1604,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     updatePickerLabel();
     buildDrum();
     selectLug(0);
-    updateNeedle(null);
+    updateNeedleCents(null);
     hideConsistencyWarn();
     hideHitWarn();
     const d = drum();
@@ -1663,7 +1687,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
     lockBtn.hidden = true;
     buildDrum();
     selectLug(0);
-    updateNeedle(null);
+    updateNeedleCents(null);
     setVsMedia();
     updatePickerLabel();
     const d = drum();
@@ -1866,7 +1890,7 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
         current = d.id; editTarget = d.id;
         noteTargetMenu.classList.remove('open');
         updateNoteTargetLabel(); paintPiano(); syncSustain();
-        updatePickerLabel(); updateTargetLine(null, null, 0);
+        updatePickerLabel(); updateTargetLine(null, null);
       });
       noteTargetMenu.appendChild(b);
     });
@@ -2088,14 +2112,14 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
 
   measurements = new Array(lugCount).fill(null);
   buildDrum();
-  updateNeedle(null);
+  updateNeedleCents(null);
   if(kit.length) selectDrum(kit[0].id);
   else {
     updatePickerLabel();
     setReading(null, 'LIGA O MICROFONE', 'var(--muted)');
     status('Ligar microfone para começar');
   }
-  updateTargetLine(null, null, 0);
+  updateTargetLine(null, null);
 
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     micBtn.disabled = true;
