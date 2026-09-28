@@ -141,38 +141,64 @@
   .style-pick .picker-btn{ width:auto; padding:9px 12px; font-size:11.5px; }
   .style-pick .picker-menu{ left:auto; width:150px; }
 
-  .stage-wrap{ flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:0 10px; }
-  .stage-wrap svg{ width:100%; height:100%; max-height:100%; display:block; }
+  /* O palco tem altura limitada em vez de flex:1. Sem isso, quando nao ha
+     tambor o SVG vazio esticava e empurrava todo o resto para baixo. */
+  .stage-wrap{
+    flex:0 1 auto;
+    min-height:0;
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+    padding:0 10px;
+    max-height:min(34vh, 260px);
+  }
+  .stage-wrap svg{ width:auto; height:100%; max-height:100%; max-width:100%; display:block; }
+  /* Sem tambor escolhido o SVG esta vazio. Em vez de deixar um buraco,
+     encolhe o bloco e mostra uma pista. A classe e posta no body pelo JS
+     (nao usamos :has(), que falha em Android antigo). */
+  .stage-empty{
+    display:none;
+    font-size:12.5px; color:var(--muted);
+    text-align:center; padding:22px 16px;
+  }
+  body.no-drum .stage-wrap{ max-height:none; padding:0; }
+  body.no-drum .stage-wrap svg{ display:none; }
+  body.no-drum .stage-empty{ display:block; }
 
-  /* Leitura em duas linhas: nota+cents, depois Hz.
-     Barlow Condensed e mais estreita que a Oswald: a mesma informacao
-     numa letra mais alta, legivel a varios metros de distancia. */
-  .readout{ flex:0 0 auto; padding:2px 12px 6px; text-align:center; }
+  /* Leitura: a nota e o elemento principal, por isso vem logo a seguir ao
+     palco. O veredicto e grande mas nao deve empurrar o resto para fora. */
+  .readout{ flex:0 0 auto; padding:0 12px 2px; text-align:center; }
   .note-line{
     font-family:'Barlow Condensed', sans-serif;
     font-weight:800;
-    font-size:clamp(44px, 13vw, 72px);
-    line-height:0.95;
-    min-height:1em;
+    font-size:clamp(40px, 11.5vw, 64px);
+    line-height:0.92;
+    min-height:0.9em;
   }
+  /* Sem leitura, a nota e o Hz nao devem reservar altura: mostravam um
+     "—" gigante no meio do ecra. */
+  .note-line:empty, .hz-line:empty, .verdict:empty, .vs-media:empty{ display:none; }
+  body.no-drum .note-line, body.no-drum .hz-line, body.no-drum .vs-media{ display:none; }
   .hz-line{
     font-family:'Barlow Condensed', sans-serif;
     font-weight:600;
-    font-size:26px;
+    font-size:24px;
     color:var(--muted);
-    margin-top:2px;
-    min-height:1em;
+    margin-top:1px;
+    min-height:0;
   }
+  .hz-line:empty{ display:none; }
   .verdict{
     font-family:'Barlow Condensed', sans-serif;
     font-weight:800;
-    font-size:clamp(28px, 8.5vw, 46px);
+    font-size:clamp(24px, 7vw, 38px);
     line-height:1.05;
     margin-top:2px;
-    min-height:1em;
+    min-height:0;
   }
-  .vs-media{ font-family:'JetBrains Mono', monospace; font-size:12px; margin-top:3px; min-height:1em; }
-  .status-line{ font-size:12.5px; color:var(--muted); margin-top:3px; min-height:1.1em; padding:0 4px; }
+  .verdict:empty{ display:none; }
+  .vs-media{ font-family:'JetBrains Mono', monospace; font-size:12px; margin-top:2px; min-height:0; }
+  .vs-media:empty{ display:none; }
+  .status-line{ font-size:12px; color:var(--muted); margin-top:2px; min-height:1.1em; padding:0 4px; }
 
   /* Faixa horizontal de cents: vermelho nas pontas, verde no centro.
      Substitui o medidor em arco, mas a escala e a mesma (+-50 cents). */
@@ -275,8 +301,7 @@
   body.stage-mode.tune-near{ background:#2b2408; }     /* dourado: perto */
   body.stage-mode.tune-far{ background:#2e0d0b; }      /* vermelho: longe do alvo */
 
-  body.stage-mode .stage-wrap{ padding:2vh 8px 0; align-items:center; }
-  body.stage-mode .stage-wrap svg{ height:52vh; width:auto; margin:0 auto; }
+  body.stage-mode .stage-wrap{ padding:2vh 8px 0; align-items:center; max-height:52vh; }
   body.stage-mode .readout{ padding-top:1vh; }
   body.stage-mode .note-line{ font-size:clamp(56px, 19vw, 116px); }
   body.stage-mode .hz-line{ font-size:30px; }
@@ -555,8 +580,17 @@
       <div class="target-line" id="targetLine"></div>
     </div>
 
-    <div class="stage-wrap">
+    <div class="stage-wrap" id="stageWrap">
       <svg id="drumSvg" viewBox="0 0 500 500"></svg>
+      <div class="stage-empty" id="stageEmpty">Escolhe um tambor para ver os parafusos</div>
+    </div>
+
+    <div class="readout">
+      <div class="note-line" id="noteLine">—</div>
+      <div class="hz-line" id="hzLine"></div>
+      <div class="verdict" id="verdict">LIGA O MICROFONE</div>
+      <div class="vs-media" id="vsMedia"></div>
+      <div class="status-line" id="statusLine">Ligar microfone para começar</div>
     </div>
 
     <div class="cents-wrap">
@@ -583,14 +617,6 @@
         <span class="lbl">f1 (2º pico)</span>
         <b id="f1Val">—</b>
       </div>
-    </div>
-
-    <div class="readout">
-      <div class="note-line" id="noteLine">—</div>
-      <div class="hz-line" id="hzLine"></div>
-      <div class="verdict" id="verdict">LIGA O MICROFONE</div>
-      <div class="vs-media" id="vsMedia"></div>
-      <div class="status-line" id="statusLine">Ligar microfone para começar</div>
     </div>
 
     <div class="drums-strip" id="drumsStrip"></div>
@@ -1092,6 +1118,10 @@ const BUMBO_RANGES  = { '16':[40,55], '18':[40,55], '20':[38,50], '22':[35,48] }
   // ---------- Desenho do tambor ----------
   function buildDrum(){
     svg.innerHTML = '';
+    // Sem tambor escolhido o SVG fica vazio: encolhe o palco e mostra a pista,
+    // senao o bloco vazio empurra a leitura toda para baixo do ecra.
+    document.body.classList.toggle('no-drum', !drum());
+    if (!drum()) return;
     const mk = (tag, attrs)=>{
       const el = document.createElementNS(NS, tag);
       for (const k in attrs) el.setAttribute(k, attrs[k]);
